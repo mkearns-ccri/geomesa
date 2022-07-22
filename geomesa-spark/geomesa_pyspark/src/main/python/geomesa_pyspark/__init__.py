@@ -38,6 +38,7 @@ def configure(jars=[], packages=[], files=[], spark_home=None, spark_master='yar
     import geomesa_pyspark.constructors
     import geomesa_pyspark.accessors
     import geomesa_pyspark.spatial
+    import geomesa_pyspark.utils
 
     # Need differential behavior based for <= Spark 2.0.x, Spark 2.1.0
     #  is the fist release to provide the module __version__ attribute
