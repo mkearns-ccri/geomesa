@@ -99,5 +99,11 @@ object GeometricConstructorFunctions {
   def st_geomFromWKT: UserDefinedFunction = udf(_ST_GeomFromWKT _ )
 
   def addOne(x: Int): Int = { x + 1 }
-  def addOneUDF(): UserDefinedFunction = udf(addOne _ )
+  def addOneUDF(): UserDefinedFunction = udf( addOne _ )
+
+  def toGeom(s: String): String = { WKTUtils.read(s).toString }
+  def toGeomUDF(): UserDefinedFunction = udf( toGeom _ )
+
+  def toGeom2(s: String): Geometry = { WKTUtils.read(s) }
+  def toGeomUDF2(): UserDefinedFunction = udf( toGeom2 _ )
 }
