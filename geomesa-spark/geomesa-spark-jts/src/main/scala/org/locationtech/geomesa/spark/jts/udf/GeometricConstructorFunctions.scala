@@ -24,6 +24,7 @@ object GeometricConstructorFunctions {
   val ST_GeomFromGeoHash: (String, Int) => Geometry = nullableUDF((hash, prec) => decode(hash, prec))
   val ST_GeomFromWKT: String => Geometry = nullableUDF(text => WKTUtils.read(text))
   val _ST_GeomFromWKT: String => String = text => WKTUtils.read(text).toString
+
   val ST_GeomFromWKB: Array[Byte] => Geometry = nullableUDF(array => WKBUtils.read(array))
   val ST_LineFromText: String => LineString = nullableUDF(text => WKTUtils.read(text).asInstanceOf[LineString])
   val ST_MakeBox2D: (Point, Point) => Geometry = nullableUDF((lowerLeft, upperRight) =>
@@ -96,4 +97,7 @@ object GeometricConstructorFunctions {
   }
 
   def st_geomFromWKT: UserDefinedFunction = udf(_ST_GeomFromWKT _ )
+
+  def addOne(x: Int): Int = { x + 1 }
+  def addOneUDF(): UserDefinedFunction = udf(addOne _ )
 }
