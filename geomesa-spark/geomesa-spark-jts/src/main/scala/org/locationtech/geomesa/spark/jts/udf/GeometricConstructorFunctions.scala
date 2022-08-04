@@ -16,8 +16,6 @@ import org.locationtech.geomesa.spark.jts.util.SQLFunctionHelper._
 import org.locationtech.geomesa.spark.jts.util.{GeometryUtils, WKBUtils, WKTUtils}
 import org.locationtech.jts.geom._
 
-import java.lang.reflect.Method
-
 object GeometricConstructorFunctions {
 
   @transient
@@ -52,25 +50,25 @@ object GeometricConstructorFunctions {
   protected def polygon(shell: LineString): Polygon = makePolygon(shell)
   protected def polygonFromText(text: String): Polygon = WKTUtils.read(text).asInstanceOf[Polygon]
 
-  val ST_GeomFromGeoHash: (String, Int) => Geometry = nullableUDF(geomFromGeoHash)
-  val ST_GeomFromWKT: String => Geometry = nullableUDF(geomFromWKT)
-  val ST_GeomFromWKB: Array[Byte] => Geometry = nullableUDF(geomFromWKB)
-  val ST_LineFromText: String => LineString = nullableUDF(lineFromText)
-  val ST_MakeBox2D: (Point, Point) => Geometry = nullableUDF(makeBox2D)
-  val ST_MakeBBOX: (Double, Double, Double, Double) => Geometry = nullableUDF(makeBBOX)
-  val ST_MakePolygon: LineString => Polygon = nullableUDF(makePolygon)
-  val ST_MakePoint: (Double, Double) => Point = nullableUDF(makePoint)
-  val ST_MakeLine: Seq[Point] => LineString = nullableUDF(makeLine)
-  val ST_MakePointM: (Double, Double, Double) => Point = nullableUDF(makePointM)
-  val ST_MLineFromText: String => MultiLineString = nullableUDF(mLineFromText)
-  val ST_MPointFromText: String => MultiPoint = nullableUDF(mPointFromText)
-  val ST_MPolyFromText: String => MultiPolygon = nullableUDF(mPolyFromText)
-  val ST_Point: (Double, Double) => Point = nullableUDF(makePoint)
-  val ST_PointFromGeoHash: (String, Int) => Point = nullableUDF(pointFromGeoHash)
-  val ST_PointFromText: String => Point = nullableUDF(pointFromText)
-  val ST_PointFromWKB: Array[Byte] => Point = nullableUDF(pointFromWKB)
-  val ST_Polygon: LineString => Polygon = nullableUDF(polygon)
-  val ST_PolygonFromText: String => Polygon = nullableUDF(polygonFromText)
+  protected val ST_GeomFromGeoHash: (String, Int) => Geometry = nullableUDF(geomFromGeoHash)
+  protected val ST_GeomFromWKT: String => Geometry = nullableUDF(geomFromWKT)
+  protected val ST_GeomFromWKB: Array[Byte] => Geometry = nullableUDF(geomFromWKB)
+  protected val ST_LineFromText: String => LineString = nullableUDF(lineFromText)
+  protected val ST_MakeBox2D: (Point, Point) => Geometry = nullableUDF(makeBox2D)
+  protected val ST_MakeBBOX: (Double, Double, Double, Double) => Geometry = nullableUDF(makeBBOX)
+  protected val ST_MakePolygon: LineString => Polygon = nullableUDF(makePolygon)
+  protected val ST_MakePoint: (Double, Double) => Point = nullableUDF(makePoint)
+  protected val ST_MakeLine: Seq[Point] => LineString = nullableUDF(makeLine)
+  protected val ST_MakePointM: (Double, Double, Double) => Point = nullableUDF(makePointM)
+  protected val ST_MLineFromText: String => MultiLineString = nullableUDF(mLineFromText)
+  protected val ST_MPointFromText: String => MultiPoint = nullableUDF(mPointFromText)
+  protected val ST_MPolyFromText: String => MultiPolygon = nullableUDF(mPolyFromText)
+  protected val ST_Point: (Double, Double) => Point = nullableUDF(makePoint)
+  protected val ST_PointFromGeoHash: (String, Int) => Point = nullableUDF(pointFromGeoHash)
+  protected val ST_PointFromText: String => Point = nullableUDF(pointFromText)
+  protected val ST_PointFromWKB: Array[Byte] => Point = nullableUDF(pointFromWKB)
+  protected val ST_Polygon: LineString => Polygon = nullableUDF(polygon)
+  protected val ST_PolygonFromText: String => Polygon = nullableUDF(polygonFromText)
 
   private[geomesa] val constructorNames = Map(
     ST_GeomFromGeoHash -> "st_geomFromGeoHash",
@@ -119,30 +117,27 @@ object GeometricConstructorFunctions {
     sqlContext.udf.register(constructorNames(ST_PolygonFromText), ST_PolygonFromText)
   }
 
-  object UserDefinedFunctions {
-    def st_geomFromGeoHash: UserDefinedFunction = udf(geomFromGeoHash _)
-    def st_box2DFromGeoHash: UserDefinedFunction = udf(geomFromGeoHash _)
-    def st_geomFromText: UserDefinedFunction = udf(geomFromWKT _)
-    def st_geometryFromText: UserDefinedFunction = udf(geomFromWKT _)
-    def st_geomFromWKT: UserDefinedFunction = udf(geomFromWKT _)
-    def st_geomFromWKB: UserDefinedFunction = udf(geomFromWKB _)
-    def st_lineFromText: UserDefinedFunction = udf(lineFromText _)
-    def st_makeBox2D: UserDefinedFunction = udf(makeBox2D _)
-    def st_makeBBOX: UserDefinedFunction = udf(makeBBOX _)
-    def st_makePolygon: UserDefinedFunction = udf(makePolygon _)
-    def st_makePoint: UserDefinedFunction = udf(makePoint _)
-    def st_makeLine: UserDefinedFunction = udf(makeLine _)
-    def st_makePointM: UserDefinedFunction = udf(makePointM _)
-    def st_mLineFromText: UserDefinedFunction = udf(mLineFromText _)
-    def st_mPointFromText: UserDefinedFunction = udf(mPointFromText _)
-    def st_mPolyFromText: UserDefinedFunction = udf(mPolyFromText _)
-    def st_point: UserDefinedFunction = udf(point _)
-    def st_pointFromGeoHash: UserDefinedFunction = udf(pointFromGeoHash _)
-    def st_pointFromText: UserDefinedFunction = udf(pointFromText _)
-    def st_pointFromWKB: UserDefinedFunction = udf(pointFromWKB _)
-    def st_polygon: UserDefinedFunction = udf(polygon _)
-    def st_polygonFromText: UserDefinedFunction = udf(polygonFromText _)
-  }
-
-  def userDefinedFunctions: List[Method] = UserDefinedFunctions.getClass.getMethods.toList
+  /* UserDefinedFunctions for use in PySpark */
+  def st_geomFromGeoHash: UserDefinedFunction = udf(geomFromGeoHash _)
+  def st_box2DFromGeoHash: UserDefinedFunction = udf(geomFromGeoHash _)
+  def st_geomFromText: UserDefinedFunction = udf(geomFromWKT _)
+  def st_geometryFromText: UserDefinedFunction = udf(geomFromWKT _)
+  def st_geomFromWKT: UserDefinedFunction = udf(geomFromWKT _)
+  def st_geomFromWKB: UserDefinedFunction = udf(geomFromWKB _)
+  def st_lineFromText: UserDefinedFunction = udf(lineFromText _)
+  def st_makeBox2D: UserDefinedFunction = udf(makeBox2D _)
+  def st_makeBBOX: UserDefinedFunction = udf(makeBBOX _)
+  def st_makePolygon: UserDefinedFunction = udf(makePolygon _)
+  def st_makePoint: UserDefinedFunction = udf(makePoint _)
+  def st_makeLine: UserDefinedFunction = udf(makeLine _)
+  def st_makePointM: UserDefinedFunction = udf(makePointM _)
+  def st_mLineFromText: UserDefinedFunction = udf(mLineFromText _)
+  def st_mPointFromText: UserDefinedFunction = udf(mPointFromText _)
+  def st_mPolyFromText: UserDefinedFunction = udf(mPolyFromText _)
+  def st_point: UserDefinedFunction = udf(point _)
+  def st_pointFromGeoHash: UserDefinedFunction = udf(pointFromGeoHash _)
+  def st_pointFromText: UserDefinedFunction = udf(pointFromText _)
+  def st_pointFromWKB: UserDefinedFunction = udf(pointFromWKB _)
+  def st_polygon: UserDefinedFunction = udf(polygon _)
+  def st_polygonFromText: UserDefinedFunction = udf(polygonFromText _)
 }
