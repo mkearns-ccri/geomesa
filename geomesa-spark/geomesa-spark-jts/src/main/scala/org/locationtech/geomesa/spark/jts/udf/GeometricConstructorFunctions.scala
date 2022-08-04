@@ -16,39 +16,41 @@ import org.locationtech.geomesa.spark.jts.util.SQLFunctionHelper._
 import org.locationtech.geomesa.spark.jts.util.{GeometryUtils, WKBUtils, WKTUtils}
 import org.locationtech.jts.geom._
 
+import java.lang.reflect.Method
+
 object GeometricConstructorFunctions {
 
   @transient
   private val geomFactory: GeometryFactory = new GeometryFactory()
 
-  def geomFromGeoHash(hash: String, prec: Int): Geometry = decode(hash, prec)
-  def geomFromWKT(text: String): Geometry = WKTUtils.read(text)
-  def geomFromWKB(array: Array[Byte]): Geometry = WKBUtils.read(array)
-  def lineFromText(text: String): LineString = WKTUtils.read(text).asInstanceOf[LineString]
-  def makeBox2D(lowerLeft: Point, upperRight: Point): Geometry = {
+  protected def geomFromGeoHash(hash: String, prec: Int): Geometry = decode(hash, prec)
+  protected def geomFromWKT(text: String): Geometry = WKTUtils.read(text)
+  protected def geomFromWKB(array: Array[Byte]): Geometry = WKBUtils.read(array)
+  protected def lineFromText(text: String): LineString = WKTUtils.read(text).asInstanceOf[LineString]
+  protected def makeBox2D(lowerLeft: Point, upperRight: Point): Geometry = {
     val envelope = new Envelope(lowerLeft.getX, upperRight.getX, lowerLeft.getY, upperRight.getY)
     geomFactory.toGeometry(envelope)
   }
-  def makeBBOX(lowerX: Double, upperX: Double, lowerY: Double, upperY: Double): Geometry = {
+  protected def makeBBOX(lowerX: Double, upperX: Double, lowerY: Double, upperY: Double): Geometry = {
     val envelope = new Envelope(lowerX, upperX, lowerY, upperY)
     GeometryUtils.addWayPointsToBBOX(geomFactory.toGeometry(envelope))
   }
-  def makePolygon(shell: LineString): Polygon = {
+  protected def makePolygon(shell: LineString): Polygon = {
     val ring = geomFactory.createLinearRing(shell.getCoordinateSequence)
     geomFactory.createPolygon(ring)
   }
-  def makePoint(x: Double, y: Double): Point = geomFactory.createPoint(new Coordinate(x, y))
-  def makeLine(s: Seq[Point]): LineString = geomFactory.createLineString(s.map(_.getCoordinate).toArray)
-  def makePointM(x: Double, y: Double, m: Double): Point = WKTUtils.read(s"POINT($x $y $m)").asInstanceOf[Point]
-  def mLineFromText(text: String): MultiLineString = WKTUtils.read(text).asInstanceOf[MultiLineString]
-  def mPointFromText(text: String): MultiPoint = WKTUtils.read(text).asInstanceOf[MultiPoint]
-  def mPolyFromText(text: String): MultiPolygon = WKTUtils.read(text).asInstanceOf[MultiPolygon]
-  def point(x: Double, y: Double): Point = makePoint(x, y)
-  def pointFromGeoHash(hash: String, prec: Int): Point = decode(hash, prec).getInteriorPoint
-  def pointFromText(text: String): Point = WKTUtils.read(text).asInstanceOf[Point]
-  def pointFromWKB(array: Array[Byte]): Point = geomFromWKB(array).asInstanceOf[Point]
-  def polygon(shell: LineString): Polygon = makePolygon(shell)
-  def polygonFromText(text: String): Polygon = WKTUtils.read(text).asInstanceOf[Polygon]
+  protected def makePoint(x: Double, y: Double): Point = geomFactory.createPoint(new Coordinate(x, y))
+  protected def makeLine(s: Seq[Point]): LineString = geomFactory.createLineString(s.map(_.getCoordinate).toArray)
+  protected def makePointM(x: Double, y: Double, m: Double): Point = WKTUtils.read(s"POINT($x $y $m)").asInstanceOf[Point]
+  protected def mLineFromText(text: String): MultiLineString = WKTUtils.read(text).asInstanceOf[MultiLineString]
+  protected def mPointFromText(text: String): MultiPoint = WKTUtils.read(text).asInstanceOf[MultiPoint]
+  protected def mPolyFromText(text: String): MultiPolygon = WKTUtils.read(text).asInstanceOf[MultiPolygon]
+  protected def point(x: Double, y: Double): Point = makePoint(x, y)
+  protected def pointFromGeoHash(hash: String, prec: Int): Point = decode(hash, prec).getInteriorPoint
+  protected def pointFromText(text: String): Point = WKTUtils.read(text).asInstanceOf[Point]
+  protected def pointFromWKB(array: Array[Byte]): Point = geomFromWKB(array).asInstanceOf[Point]
+  protected def polygon(shell: LineString): Polygon = makePolygon(shell)
+  protected def polygonFromText(text: String): Polygon = WKTUtils.read(text).asInstanceOf[Polygon]
 
   val ST_GeomFromGeoHash: (String, Int) => Geometry = nullableUDF(geomFromGeoHash)
   val ST_GeomFromWKT: String => Geometry = nullableUDF(geomFromWKT)
@@ -69,26 +71,6 @@ object GeometricConstructorFunctions {
   val ST_PointFromWKB: Array[Byte] => Point = nullableUDF(pointFromWKB)
   val ST_Polygon: LineString => Polygon = nullableUDF(polygon)
   val ST_PolygonFromText: String => Polygon = nullableUDF(polygonFromText)
-
-  def ST_GeomFromGeoHash_UDF: UserDefinedFunction = udf(geomFromGeoHash _)
-  def ST_GeomFromWKT_UDF: UserDefinedFunction = udf(geomFromWKT _)
-  def ST_GeomFromWKB_UDF: UserDefinedFunction = udf(geomFromWKB _)
-  def ST_LineFromText_UDF: UserDefinedFunction = udf(lineFromText _)
-  def ST_MakeBox2D_UDF: UserDefinedFunction = udf(makeBox2D _)
-  def ST_MakeBBOX_UDF: UserDefinedFunction = udf(makeBBOX _)
-  def ST_MakePolygon_UDF: UserDefinedFunction = udf(makePolygon _)
-  def ST_MakePoint_UDF: UserDefinedFunction = udf(makePoint _)
-  def ST_MakeLine_UDF: UserDefinedFunction = udf(makeLine _)
-  def ST_MakePointM_UDF: UserDefinedFunction = udf(makePointM _)
-  def ST_MLineFromText_UDF: UserDefinedFunction = udf(mLineFromText _)
-  def ST_MPointFromText_UDF: UserDefinedFunction = udf(mPointFromText _)
-  def ST_MPolyFromText_UDF: UserDefinedFunction = udf(mPolyFromText _)
-  def ST_Point_UDF: UserDefinedFunction = udf(makePoint _)
-  def ST_PointFromGeoHash_UDF: UserDefinedFunction = udf(pointFromGeoHash _)
-  def ST_PointFromText_UDF: UserDefinedFunction = udf(pointFromText _)
-  def ST_PointFromWKB_UDF: UserDefinedFunction = udf(pointFromWKB _)
-  def ST_Polygon_UDF: UserDefinedFunction = udf(polygon _)
-  def ST_PolygonFromText_UDF: UserDefinedFunction = udf(polygonFromText _)
 
   private[geomesa] val constructorNames = Map(
     ST_GeomFromGeoHash -> "st_geomFromGeoHash",
@@ -137,13 +119,30 @@ object GeometricConstructorFunctions {
     sqlContext.udf.register(constructorNames(ST_PolygonFromText), ST_PolygonFromText)
   }
 
-  def addOne(x: Int): Int = { x + 1 }
-  def addOneUDF(): UserDefinedFunction = udf( addOne _ )
+  object UserDefinedFunctions {
+    def st_geomFromGeoHash: UserDefinedFunction = udf(geomFromGeoHash _)
+    def st_box2DFromGeoHash: UserDefinedFunction = udf(geomFromGeoHash _)
+    def st_geomFromText: UserDefinedFunction = udf(geomFromWKT _)
+    def st_geometryFromText: UserDefinedFunction = udf(geomFromWKT _)
+    def st_geomFromWKT: UserDefinedFunction = udf(geomFromWKT _)
+    def st_geomFromWKB: UserDefinedFunction = udf(geomFromWKB _)
+    def st_lineFromText: UserDefinedFunction = udf(lineFromText _)
+    def st_makeBox2D: UserDefinedFunction = udf(makeBox2D _)
+    def st_makeBBOX: UserDefinedFunction = udf(makeBBOX _)
+    def st_makePolygon: UserDefinedFunction = udf(makePolygon _)
+    def st_makePoint: UserDefinedFunction = udf(makePoint _)
+    def st_makeLine: UserDefinedFunction = udf(makeLine _)
+    def st_makePointM: UserDefinedFunction = udf(makePointM _)
+    def st_mLineFromText: UserDefinedFunction = udf(mLineFromText _)
+    def st_mPointFromText: UserDefinedFunction = udf(mPointFromText _)
+    def st_mPolyFromText: UserDefinedFunction = udf(mPolyFromText _)
+    def st_point: UserDefinedFunction = udf(point _)
+    def st_pointFromGeoHash: UserDefinedFunction = udf(pointFromGeoHash _)
+    def st_pointFromText: UserDefinedFunction = udf(pointFromText _)
+    def st_pointFromWKB: UserDefinedFunction = udf(pointFromWKB _)
+    def st_polygon: UserDefinedFunction = udf(polygon _)
+    def st_polygonFromText: UserDefinedFunction = udf(polygonFromText _)
+  }
 
-  def toGeom(s: String): String = { WKTUtils.read(s).toString }
-  def toGeomUDF(): UserDefinedFunction = udf( toGeom _ )
-
-  def toGeom2(s: String): Geometry = { WKTUtils.read(s) }
-  def toGeomUDF2(): UserDefinedFunction = udf( toGeom2 _ )
-
+  def userDefinedFunctions: List[Method] = UserDefinedFunctions.getClass.getMethods.toList
 }
