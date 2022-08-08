@@ -11,12 +11,7 @@ package org.locationtech.geomesa.spark.jts.udf
 import java.{lang => jl}
 import org.locationtech.jts.geom._
 import org.apache.spark.sql.SQLContext
-import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.udf
-import org.apache.spark.sql.types.DoubleType
 import org.locationtech.geomesa.spark.jts.util.SQLFunctionHelper._
-
-import scala.util.Try
 
 object GeometricAccessorFunctions {
   val ST_Boundary: Geometry => Geometry = nullableUDF(geom => geom.getBoundary)
@@ -126,6 +121,4 @@ object GeometricAccessorFunctions {
     sqlContext.udf.register(accessorNames(ST_X), ST_X)
     sqlContext.udf.register(accessorNames(ST_Y), ST_Y)
   }
-
-  def st_x: UserDefinedFunction = udf(ST_X _ )
 }

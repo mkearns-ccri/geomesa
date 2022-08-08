@@ -123,6 +123,9 @@ object GeometricConstructorFunctions {
   def st_geomFromText: UserDefinedFunction = udf(geomFromWKT _)
   def st_geometryFromText: UserDefinedFunction = udf(geomFromWKT _)
   def st_geomFromWKT: UserDefinedFunction = udf(geomFromWKT _)
+
+  def st_geomFromWKT2: UserDefinedFunction = udf(ST_GeomFromWKT)
+
   def st_geomFromWKB: UserDefinedFunction = udf(geomFromWKB _)
   def st_lineFromText: UserDefinedFunction = udf(lineFromText _)
   def st_makeBox2D: UserDefinedFunction = udf(makeBox2D _)
@@ -140,4 +143,6 @@ object GeometricConstructorFunctions {
   def st_pointFromWKB: UserDefinedFunction = udf(pointFromWKB _)
   def st_polygon: UserDefinedFunction = udf(polygon _)
   def st_polygonFromText: UserDefinedFunction = udf(polygonFromText _)
+
+
 }
