@@ -139,27 +139,4 @@ object SpatialRelationFunctions {
     affineTransform.setToTranslation(deltax, deltay)
     affineTransform.transform(g)
   }
-
-//  ST_Translate
-//  ST_Contains
-//  ST_Covers
-//  ST_Crosses
-//  ST_Disjoint
-//  ST_Equals
-//  ST_Intersects
-//  ST_Overlaps
-//  ST_Touches
-//  ST_Within
-//  ST_Relate
-//  ST_RelateBool
-
-  def st_area: UserDefinedFunction = udf(ST_Area)
-
-//  ST_Centroid
-//  ST_ClosestPoint
-//  ST_Distance
-//  ST_DistanceSphere
-//  ST_Length
-//  ST_AggregateDistanceSphere
-//  ST_LengthSphere
 }
