@@ -2,13 +2,19 @@
 Build PySpark UDFs from the Geomesa UDFs (scala UDFs).
 """
 from pyspark import SparkContext
-from geomesa_pyspark.scala.udf import build_scala_udf
+from pyspark.sql.column import Column
+from geomesa_pyspark.scala.utils import build_scala_udf
 
 spark_context = SparkContext.getOrCreate()
 geomesa_functions = spark_context._jvm.org.locationtech.geomesa.spark.jts.udf.GeomesaPysparkFunctions
 
 # Geometric Accessor Functions
-st_boundary = build_scala_udf(spark_context, geomesa_functions.st_boundary)
+
+def st_boundary(col: Column) -> Column:
+    """Returns the boundary, or an empty geometry of appropriate dimension, if geom is empty."""
+    return build_scala_udf(spark_context, geomesa_functions.st_boundary)(col)
+
+#st_boundary = build_scala_udf(spark_context, geomesa_functions.st_boundary)
 st_coordDim = build_scala_udf(spark_context, geomesa_functions.st_coordDim)
 st_dimension = build_scala_udf(spark_context, geomesa_functions.st_dimension)
 st_envelope = build_scala_udf(spark_context, geomesa_functions.st_envelope)
