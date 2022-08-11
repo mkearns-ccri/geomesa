@@ -8,8 +8,6 @@
 
 package org.locationtech.geomesa.spark.jts.udf
 
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.api.java.UDF2
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
 import org.locationtech.geomesa.spark.jts.udf.GeometricAccessorFunctions._
@@ -18,7 +16,6 @@ import org.locationtech.geomesa.spark.jts.udf.GeometricConstructorFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricOutputFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricProcessingFunctions.{ST_BufferPoint, ST_antimeridianSafeGeom}
 import org.locationtech.geomesa.spark.jts.udf.SpatialRelationFunctions._
-import org.locationtech.jts.geom.Geometry
 
 /**
  * Re-wrapping the UDFs so we can access them from PySpark without using the SQL API.
@@ -101,14 +98,10 @@ object GeomesaPysparkFunctions {
   def st_within: UserDefinedFunction = udf(ST_Within)
   def st_relate: UserDefinedFunction = udf(ST_Relate)
   def st_relateBool: UserDefinedFunction = udf(ST_RelateBool)
-
-  def st_area: UserDefinedFunction = udf((g: Geometry) => ST_Area(g))
-
+  def st_area: UserDefinedFunction = udf(ST_Area)
   def st_centroid: UserDefinedFunction = udf(ST_Centroid)
   def st_closestPoint: UserDefinedFunction = udf(ST_ClosestPoint)
-
-  def st_distance: UserDefinedFunction = udf((g1: Geometry, g2: Geometry) => ST_Distance(g1, g2))
-
+  def st_distance: UserDefinedFunction = udf(ST_Distance)
   def st_distanceSphere: UserDefinedFunction = udf(ST_DistanceSphere)
   def st_length: UserDefinedFunction = udf(ST_Length)
   def st_aggregateDistanceSphere: UserDefinedFunction = udf(ST_AggregateDistanceSphere)
