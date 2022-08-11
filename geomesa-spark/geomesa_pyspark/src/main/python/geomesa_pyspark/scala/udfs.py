@@ -73,8 +73,8 @@ st_asText = build_scala_udf(spark_context, geomesa_functions.st_asText)
 st_geoHash = build_scala_udf(spark_context, geomesa_functions.st_geoHash)
 
 # Geometric Processing Functions
-st_antimeridianSafeGeom = build_scala_udf(spark_context, geomesa_functions.st_)
-st_bufferPoint = build_scala_udf(spark_context, geomesa_functions.st_)
+st_antimeridianSafeGeom = build_scala_udf(spark_context, geomesa_functions.st_antimeridianSafeGeom)
+st_bufferPoint = build_scala_udf(spark_context, geomesa_functions.st_bufferPoint)
 
 # Spatial Relation Functions
 st_translate = build_scala_udf(spark_context, geomesa_functions.st_translate)
