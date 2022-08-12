@@ -32,6 +32,17 @@ st_geomFromGeoHash
 Returns the ``Geometry`` of the bounding box corresponding to the Geohash string *geohash* (base-32 encoded) with
 a precision of *prec* bits. See :ref:`geohash` for more information on GeoHashes.
 
+.. _st_geomFromGeoJSON:
+
+st_geomFromGeoJSON
+^^^^^^^^^^^^^^^^^^
+
+::
+
+    Geometry st_geomFromGeoJSON(String geojsonGeometry)
+
+Creates a Geometry from the given GeoJSON Geometry (`GeoJson`_).
+
 .. _st_geomFromText:
 
 st_geomFromText
@@ -670,6 +681,17 @@ st_crosses
 
 Returns true if the supplied geometries have some, but not all, interior points in common.
 
+.. _st_difference:
+
+st_difference
+^^^^^^^^^^^^^
+
+::
+
+    Geometry st_difference(Geometry a, Geometry b)
+
+Returns the difference of the input geometries.
+
 .. _st_disjoint:
 
 st_disjoint
@@ -726,6 +748,17 @@ st_equals
     Boolean st_equals(Geometry a, Geometry b)
 
 Returns true if the given Geometries represent the same logical Geometry. Directionality is ignored.
+
+.. _st_intersection:
+
+st_intersection
+^^^^^^^^^^^^^^^
+
+::
+
+    Geometry st_intersection(Geometry a, Geometry b)
+
+Returns the intersection of the input geometries.
 
 .. _st_intersects:
 
@@ -822,6 +855,18 @@ st_touches
     Boolean st_touches(Geometry a, Geometry b)
 
 Returns true if the geometries have at least one point in common, but their interiors do not intersect.
+
+.. _st_transform:
+
+st_transform
+^^^^^^^^^^^^
+
+::
+
+    Geometry st_transform(Geometry a, String fromCRS, String toCRS)
+
+Returns a new geometry with its coordinates transformed to a different coordinate reference system (for example from
+EPSG:4326 to EPSG:27700).
 
 .. _st_within:
 

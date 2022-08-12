@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -10,22 +10,21 @@ package org.locationtech.geomesa.accumulo.tools.data
 
 import java.util.regex.Pattern
 
-import com.beust.jcommander.{JCommander, Parameter, Parameters}
+import com.beust.jcommander.{Parameter, Parameters}
 import org.apache.accumulo.core.client.TableNotFoundException
 import org.locationtech.geomesa.accumulo.data.AccumuloDataStore
 import org.locationtech.geomesa.accumulo.tools.{AccumuloDataStoreCommand, AccumuloDataStoreParams}
-import org.locationtech.geomesa.tools.{Command, CommandWithSubCommands, RequiredTypeNameParam, Runner}
+import org.locationtech.geomesa.tools.{Command, CommandWithSubCommands, RequiredTypeNameParam}
 import org.opengis.feature.simple.SimpleFeatureType
 
 import scala.collection.JavaConversions._
 
-class TableConfCommand(val runner: Runner, val jc: JCommander) extends CommandWithSubCommands {
+class TableConfCommand extends CommandWithSubCommands {
 
   import TableConfCommand._
 
   override val name = "configure-table"
   override val params = new TableConfParams()
-
   override val subCommands: Seq[Command] = Seq(new TableConfListCommand, new TableConfUpdateCommand)
 }
 

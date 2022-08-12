@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -46,6 +46,7 @@ object KuduQueryPlan {
     explainer(s"Additional predicates: ${if (plan.predicates.isEmpty) { "None" } else { plan.predicates.map(_.toString).mkString(", ") }}")
     explainer(s"Client-side filter: ${plan.ecql.map(filterToString).getOrElse("None")}")
     explainer(s"Rows to features: ${plan.adapter}")
+    explainer(s"Reduce: ${plan.reducer.getOrElse("none")}")
     explainer.popLevel()
   }
 

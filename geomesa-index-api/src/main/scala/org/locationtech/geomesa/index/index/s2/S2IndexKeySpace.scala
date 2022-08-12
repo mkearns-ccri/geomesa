@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -13,7 +13,7 @@ import org.locationtech.geomesa.curve.S2SFC
 import org.locationtech.geomesa.filter.{FilterHelper, FilterValues}
 import org.locationtech.geomesa.index.api
 import org.locationtech.geomesa.index.api.IndexKeySpace.IndexKeySpaceFactory
-import org.locationtech.geomesa.index.api.ShardStrategy.{NoShardStrategy, ZShardStrategy}
+import org.locationtech.geomesa.index.api.ShardStrategy.{NoShardStrategy, Z2ShardStrategy}
 import org.locationtech.geomesa.index.api._
 import org.locationtech.geomesa.index.conf.QueryHints.LOOSE_BBOX
 import org.locationtech.geomesa.index.conf.QueryProperties
@@ -97,15 +97,15 @@ class S2IndexKeySpace(val sft: SimpleFeatureType, val sharding: ShardStrategy, g
     val bytes = Array.ofDim[Byte](shard.length + 8 + id.length)
 
     if (shard.isEmpty) {
-      ByteArrays.writeLong(s.id(), bytes)
+      ByteArrays.writeLong(s, bytes)
       System.arraycopy(id, 0, bytes, 8, id.length)
     } else {
       bytes(0) = shard.head // shard is only a single byte
-      ByteArrays.writeLong(s.id(), bytes, 1)
+      ByteArrays.writeLong(s, bytes, 1)
       System.arraycopy(id, 0, bytes, 9, id.length)
     }
 
-    SingleRowKeyValue(bytes, sharing, shard, s.id(), tier, id, writable.values)
+    SingleRowKeyValue(bytes, sharing, shard, s, tier, id, writable.values)
   }
 
   /**
@@ -148,8 +148,8 @@ class S2IndexKeySpace(val sft: SimpleFeatureType, val sharding: ShardStrategy, g
     * @return
     */
   override def getRanges(values: S2IndexValues, multiplier: Int): Iterator[ScanRange[Long]] = {
-    val S2IndexValues(_, _, xy) = values
-    if (xy.isEmpty) {
+    val S2IndexValues(_, geoms, xy) = values
+    if (geoms.disjoint) {
       Iterator.empty
     } else {
       // note: `target` will always be Some, as ScanRangesTarget has a default value
@@ -200,7 +200,7 @@ class S2IndexKeySpace(val sft: SimpleFeatureType, val sharding: ShardStrategy, g
     // don't need to apply the filter on top of it. this may cause some minor errors at extremely
     // fine resolutions, but the performance is worth it
     // if we have a complicated geometry predicate, we need to pass it through to be evaluated
-    val looseBBox = Option(hints.get(LOOSE_BBOX)).map(Boolean.unbox).getOrElse(config.forall(_.looseBBox))
+    val looseBBox = Option(hints.get(LOOSE_BBOX)).map(Boolean.unbox).getOrElse(config.forall(_.queries.looseBBox))
     lazy val simpleGeoms = values.toSeq.flatMap(_.geometries.values).forall(GeometryUtils.isRectangular)
 
     !looseBBox || !simpleGeoms
@@ -215,7 +215,7 @@ object S2IndexKeySpace extends IndexKeySpaceFactory[S2IndexValues, Long] {
       classOf[Point].isAssignableFrom(sft.getDescriptor(attributes.head).getType.getBinding)
 
   override def apply(sft: SimpleFeatureType, attributes: Seq[String], tier: Boolean): S2IndexKeySpace = {
-    val shards = if (tier) { NoShardStrategy } else { ZShardStrategy(sft) }
+    val shards = if (tier) { NoShardStrategy } else { Z2ShardStrategy(sft) }
     new S2IndexKeySpace(sft, shards, attributes.head)
   }
 }

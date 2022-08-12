@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,13 +11,13 @@ package org.locationtech.geomesa.tools
 import java.util
 import java.util.regex.Pattern
 
+import com.beust.jcommander.validators.PositiveInteger
 import com.beust.jcommander.{Parameter, ParameterException}
 import org.locationtech.geomesa.convert.Modes.ErrorMode
 import org.locationtech.geomesa.index.api.GeoMesaFeatureIndex
 import org.locationtech.geomesa.index.geotools.GeoMesaDataStore
 import org.locationtech.geomesa.index.index.attribute.AttributeIndex
 import org.locationtech.geomesa.tools.DistributedRunParam.RunModes
-import org.locationtech.geomesa.tools.DistributedRunParam.RunModes.RunMode
 import org.locationtech.geomesa.tools.utils.ParameterConverters.{ErrorModeConverter, FilterConverter, HintConverter}
 import org.locationtech.geomesa.utils.index.IndexMode.IndexMode
 import org.opengis.filter.Filter
@@ -61,12 +61,7 @@ trait KerberosParams {
   var keytab: String = _
 }
 
-trait RequiredCredentialsParams extends PasswordParams {
-  @Parameter(names = Array("-u", "--user"), description = "Connection user name", required = true)
-  var user: String = _
-}
-
-trait OptionalCredentialsParams extends PasswordParams {
+trait CredentialsParams extends PasswordParams {
   @Parameter(names = Array("-u", "--user"), description = "Connection user name")
   var user: String = _
 }
@@ -167,7 +162,11 @@ object IndexParam {
     val sft = ds.getSchema(typeName)
     val indices = ds.manager.indices(sft, mode)
 
-    lazy val available = indices.flatMap(i => Seq(i.name, i.identifier)).distinct.mkString(", ")
+    lazy val available = {
+      val names = scala.collection.mutable.Map.empty[String, Int].withDefaultValue(0)
+      indices.foreach(i => names.put(i.name, names(i.name) + 1))
+      (indices.map(_.identifier) ++ names.collect { case (n, 1) => n }).distinct.sorted.mkString(", ")
+    }
 
     def single(indices: Seq[GeoMesaFeatureIndex[_, _]]): Option[GeoMesaFeatureIndex[_, _]] = indices match {
       case Nil => None
@@ -229,7 +228,7 @@ trait DistributedRunParam {
   @Parameter(names = Array("--run-mode"), description = "Run locally or on a cluster", required = false)
   var runMode: String = _
 
-  lazy val mode: Option[RunMode] = {
+  lazy val mode: Option[RunModes.RunMode] = {
     Option(runMode).map {
       case m if m.equalsIgnoreCase(RunModes.Local.toString) => RunModes.Local
       case m if m.equalsIgnoreCase(RunModes.Distributed.toString) => RunModes.Distributed
@@ -271,4 +270,18 @@ trait DistributedCombineParam {
 trait OutputPathParam {
   @Parameter(names = Array("--output"), description = "Path to use for writing output", required = true)
   var outputPath: String = _
+}
+
+trait TempPathParam {
+  @Parameter(names = Array("--temp-path"), description = "Path to temp dir for writing output. " +
+      "Note that this may be useful when using s3 since it is slow as a sink", required = false)
+  var tempPath: String = _
+}
+
+trait NumReducersParam {
+  @Parameter(
+    names = Array("--num-reducers"),
+    description = "Number of reducers to use when sorting or merging (for distributed jobs)",
+    validateWith = Array(classOf[PositiveInteger]))
+  var reducers: java.lang.Integer = _
 }

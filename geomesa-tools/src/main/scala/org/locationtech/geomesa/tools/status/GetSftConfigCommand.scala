@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -12,9 +12,9 @@ import java.util
 import java.util.Collections
 
 import com.beust.jcommander._
-import org.geotools.data.DataStore
+import org.geotools.data.{DataStore, FileDataStore}
 import org.locationtech.geomesa.tools.status.GetSftConfigCommand.{Spec, TypeSafe}
-import org.locationtech.geomesa.tools.{Command, DataStoreCommand, RequiredTypeNameParam}
+import org.locationtech.geomesa.tools.{Command, DataStoreCommand, ProvidedTypeNameParam, TypeNameParam}
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
 import org.opengis.feature.simple.SimpleFeatureType
 
@@ -24,8 +24,14 @@ trait GetSftConfigCommand[DS <: DataStore] extends DataStoreCommand[DS] {
 
   override def params: GetSftConfigParams
 
-  override def execute(): Unit = {
+  override def execute(): Unit = withDataStore(showSftConfig)
+
+  protected def showSftConfig(ds: DS): Unit = {
     import scala.collection.JavaConversions._
+    for {
+      p <- Option(params).collect { case p: ProvidedTypeNameParam => p }
+      f <- Option(ds).collect { case f: FileDataStore => f }
+    } { p.featureName = f.getSchema.getTypeName }
 
     Command.user.info(s"Retrieving SFT for type name '${params.featureName}'")
 
@@ -42,7 +48,6 @@ trait GetSftConfigCommand[DS <: DataStore] extends DataStoreCommand[DS] {
   }
 
   def getSchema(ds: DS): SimpleFeatureType = ds.getSchema(params.featureName)
-
 }
 
 object GetSftConfigCommand {
@@ -51,11 +56,15 @@ object GetSftConfigCommand {
 }
 
 // @Parameters(commandDescription = "Get the SimpleFeatureType of a feature")
-trait GetSftConfigParams extends RequiredTypeNameParam {
+trait GetSftConfigParams extends TypeNameParam {
   @Parameter(names = Array("--concise"), description = "Render in concise format", required = false)
   var concise: Boolean = false
 
-  @Parameter(names = Array("--format"), description = "Output formats (allowed values are spec or config)", required = false, validateValueWith = classOf[FormatValidator])
+  @Parameter(
+    names = Array("--format"),
+    description = "Output formats (allowed values are spec or config)",
+    required = false,
+    validateValueWith = Array(classOf[FormatValidator]))
   var format: java.util.List[String] = Collections.singletonList(Spec)
 
   @Parameter(names = Array("--exclude-user-data"), description = "Exclude user data", required = false)

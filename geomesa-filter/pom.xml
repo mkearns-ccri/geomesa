@@ -2,13 +2,17 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
 
     <parent>
-        <artifactId>geomesa_2.11</artifactId>
+        <artifactId>geomesa_2.12</artifactId>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <version>2.4.3-SNAPSHOT</version>
+=======
+        <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>geomesa-filter_2.11</artifactId>
+    <artifactId>geomesa-filter_2.12</artifactId>
     <name>GeoMesa Filters and Functions</name>
 
     <properties>
@@ -24,6 +28,7 @@
             <groupId>org.geotools</groupId>
             <artifactId>gt-cql</artifactId>
         </dependency>
+
         <dependency>
             <groupId>org.geotools</groupId>
             <artifactId>gt-transform</artifactId>
@@ -44,6 +49,11 @@
         <dependency>
             <groupId>org.locationtech.geomesa</groupId>
             <artifactId>geomesa-feature-all_${scala.binary.version}</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.geotools</groupId>
+            <artifactId>gt-epsg-wkt</artifactId>
             <scope>test</scope>
         </dependency>
         <dependency>

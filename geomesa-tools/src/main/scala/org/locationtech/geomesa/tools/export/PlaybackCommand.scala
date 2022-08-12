@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -41,7 +41,11 @@ trait PlaybackCommand[DS <: DataStore] extends ExportCommand[DS] {
   override val name = "playback"
   override def params: PlaybackParams
 
-  override protected def export(ds: DS, query: Query, exporter: FeatureExporter): Option[Long] = {
+  override protected def export(
+      ds: DS,
+      query: Query,
+      exporter: FeatureExporter,
+      writeEmptyFiles: Boolean): Option[Long] = {
     val features: SimpleFeatureCollection = new DataFeatureCollection(GeoMesaFeatureCollection.nextId) {
 
       private val fs = ds.getFeatureSource(query.getTypeName)
@@ -95,8 +99,14 @@ trait PlaybackCommand[DS <: DataStore] extends ExportCommand[DS] {
     }
 
     try {
-      exporter.start(features.getSchema)
-      WithClose(CloseableIterator(features.features()))(exporter.export)
+      WithClose(CloseableIterator(features.features())) { iter =>
+        if (writeEmptyFiles || iter.hasNext) {
+          exporter.start(features.getSchema)
+          exporter.export(iter)
+        } else {
+          Some(0L)
+        }
+      }
     } catch {
       case NonFatal(e) =>
         throw new RuntimeException("Could not execute export query. Please ensure " +

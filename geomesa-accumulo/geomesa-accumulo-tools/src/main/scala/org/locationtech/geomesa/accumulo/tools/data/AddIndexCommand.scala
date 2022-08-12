@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -60,16 +60,14 @@ object AddIndexCommand {
   }
 }
 
-class AddIndexCommandExecutor(override val params: AddIndexParameters) extends Runnable with AccumuloDataStoreCommand {
+class AddIndexCommandExecutor(override val params: AddIndexParameters) extends AccumuloDataStoreCommand {
 
   import org.locationtech.geomesa.index.metadata.GeoMesaMetadata.AttributesKey
   import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleFeatureType
 
   override val name = ""
 
-  override def execute(): Unit = {}
-
-  override def run(): Unit = withDataStore(addIndex)
+  override def execute(): Unit = withDataStore(addIndex)
 
   def addIndex(ds: AccumuloDataStore): Unit  = {
 

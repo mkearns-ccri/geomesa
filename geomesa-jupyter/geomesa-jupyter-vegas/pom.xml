@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>geomesa-jupyter_2.11</artifactId>
+        <artifactId>geomesa-jupyter_2.12</artifactId>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <version>2.4.1-SNAPSHOT</version>
+=======
+        <version>3.3.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>geomesa-jupyter-vegas_2.11</artifactId>
+    <artifactId>geomesa-jupyter-vegas_2.12</artifactId>
     <name>GeoMesa Jupyter Vegas Runtime</name>
 
     <profiles>
@@ -17,7 +21,7 @@
             <dependencies>
                 <dependency>
                     <groupId>org.vegas-viz</groupId>
-                    <artifactId>vegas-spark_2.11</artifactId>
+                    <artifactId>vegas-spark_2.12</artifactId>
                     <version>0.3.6</version>
                 </dependency>
             </dependencies>
@@ -39,8 +43,7 @@
                                         <excludes>
                                             <!-- provided by Spark -->
                                             <exclude>org.scala-lang:*</exclude>
-                                            <exclude>org.scala-lang.modules:scala-parser-combinators_2.11</exclude>
-                                            <exclude>org.scala-lang.modules:scala-xml_2.11</exclude>
+                                            <exclude>org.scala-lang.modules:*</exclude>
                                         </excludes>
                                     </artifactSet>
                                     <filters>

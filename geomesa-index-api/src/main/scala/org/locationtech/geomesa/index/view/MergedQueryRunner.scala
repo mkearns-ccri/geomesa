@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,6 +11,7 @@ package org.locationtech.geomesa.index.view
 import com.typesafe.scalalogging.LazyLogging
 import org.geotools.data.{DataStore, FeatureReader, Query, Transaction}
 import org.geotools.util.factory.Hints
+import org.locationtech.geomesa.arrow.io.FormatVersion
 import org.locationtech.geomesa.arrow.vector.SimpleFeatureVector.SimpleFeatureEncoding
 import org.locationtech.geomesa.filter.factory.FastFilterFactory
 import org.locationtech.geomesa.index.conf.QueryHints
@@ -19,33 +20,47 @@ import org.locationtech.geomesa.index.geoserver.ViewParams
 import org.locationtech.geomesa.index.iterators.{ArrowScan, DensityScan, StatsScan}
 import org.locationtech.geomesa.index.planning.QueryInterceptor.QueryInterceptorFactory
 import org.locationtech.geomesa.index.planning.{LocalQueryRunner, QueryPlanner, QueryRunner}
+import org.locationtech.geomesa.index.stats.HasGeoMesaStats
 import org.locationtech.geomesa.index.utils.Explainer
+import org.locationtech.geomesa.index.view.MergedQueryRunner.Queryable
 import org.locationtech.geomesa.utils.bin.BinaryOutputEncoder
 import org.locationtech.geomesa.utils.collection.{CloseableIterator, SelfClosingIterator}
 import org.locationtech.geomesa.utils.geotools.{SimpleFeatureOrdering, SimpleFeatureTypes}
-import org.locationtech.geomesa.utils.iterators.SortedMergeIterator
+import org.locationtech.geomesa.utils.iterators.{DeduplicatingSimpleFeatureIterator, SortedMergeIterator}
 import org.locationtech.geomesa.utils.stats._
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 import org.opengis.filter.Filter
 
 /**
-  * Query runner for merging results from multiple stores
-  *
-  * @param ds merged data store
-  * @param stores delegate stores
-  */
-class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[Filter])])
-    extends QueryRunner with LazyLogging {
+ * Query runner for merging results from multiple stores
+ *
+ * @param ds merged data store
+ * @param stores delegate stores
+ * @param deduplicate deduplicate the results between stores
+ * @param parallel run scans in parallel (vs sequentially)
+ */
+class MergedQueryRunner(
+    ds: HasGeoMesaStats,
+    stores: Seq[(Queryable, Option[Filter])],
+    deduplicate: Boolean,
+    parallel: Boolean
+  ) extends QueryRunner with LazyLogging {
 
   import org.locationtech.geomesa.index.conf.QueryHints.RichHints
 
   // query interceptors are handled by the individual data stores
   override protected val interceptors: QueryInterceptorFactory = QueryInterceptorFactory.empty()
 
-  override def runQuery(sft: SimpleFeatureType, original: Query, explain: Explainer): CloseableIterator[SimpleFeature] = {
+  override def runQuery(
+      sft: SimpleFeatureType,
+      original: Query,
+      explain: Explainer): CloseableIterator[SimpleFeature] = {
+
+    // TODO deduplicate arrow, bin, density queries...
 
     val query = configureQuery(sft, original)
     val hints = query.getHints
+    val maxFeatures = if (query.isMaxFeaturesUnlimited) { None } else { Option(query.getMaxFeatures) }
 
     if (hints.isStatsQuery || hints.isArrowQuery) {
       // for stats and arrow queries, suppress the reduce step for gm stores so that we can do the merge here
@@ -60,7 +75,7 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
         val q = new Query(query)
         // make sure to coy the hints so they aren't shared
         q.setHints(new Hints(hints))
-        store.getFeatureReader(mergeFilter(q, filter), Transaction.AUTO_COMMIT)
+        store.getFeatureReader(mergeFilter(sft, q, filter), Transaction.AUTO_COMMIT)
       }
 
       if (hints.isDensityQuery) {
@@ -73,17 +88,26 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
         }
         binQuery(sft, readers, hints)
       } else {
-        Option(query.getSortBy).filterNot(_.isEmpty) match {
-          case None => SelfClosingIterator(readers.iterator).flatMap(SelfClosingIterator(_))
+        val iters =
+          if (deduplicate) {
+            // we re-use the feature id cache across readers
+            val cache = scala.collection.mutable.HashSet.empty[String]
+            readers.map(r => new DeduplicatingSimpleFeatureIterator(SelfClosingIterator(r), cache))
+          } else {
+            readers.map(SelfClosingIterator(_))
+          }
+
+        val results = Option(query.getSortBy).filterNot(_.isEmpty) match {
+          case None => SelfClosingIterator(iters.iterator).flatMap(i => i)
           case Some(sort) =>
-            val sortSft = {
-              val copy = new Query(query)
-              copy.setHints(new Hints(hints))
-              QueryPlanner.setQueryTransforms(copy, sft)
-              copy.getHints.getTransformSchema.getOrElse(sft)
-            }
+            val sortSft = QueryPlanner.extractQueryTransforms(sft, query).map(_._1).getOrElse(sft)
             // the delegate stores should sort their results, so we can sort merge them
-            new SortedMergeIterator(readers.map(SelfClosingIterator(_)))(SimpleFeatureOrdering(sortSft, sort))
+            new SortedMergeIterator(iters)(SimpleFeatureOrdering(sortSft, sort))
+        }
+
+        maxFeatures match {
+          case None => results
+          case Some(m) => results.take(m)
         }
       }
     }
@@ -119,16 +143,11 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
     // handle any sorting here
     QueryPlanner.setQuerySort(sft, query)
 
-    val arrowSft = {
-      // determine transforms but don't modify the original query and hints
-      val copy = new Query(query)
-      copy.setHints(new Hints(hints))
-      QueryPlanner.setQueryTransforms(copy, sft)
-      copy.getHints.getTransformSchema.getOrElse(sft)
-    }
+    val arrowSft = QueryPlanner.extractQueryTransforms(sft, query).map(_._1).getOrElse(sft)
     val sort = hints.getArrowSort
     val batchSize = ArrowScan.getBatchSize(hints)
     val encoding = SimpleFeatureEncoding.min(hints.isArrowIncludeFid, hints.isArrowProxyFid)
+    val ipcOpts = FormatVersion.options(hints.getArrowFormatVersion.getOrElse(FormatVersion.ArrowFormatVersion.get))
 
     val dictionaryFields = hints.getArrowDictionaryFields
     val providedDictionaries = hints.getArrowDictionaryEncodedValues(sft)
@@ -142,27 +161,31 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
     // do the reduce here, as we can't merge finalized arrow results
     val reduce = if (hints.isArrowDoublePass ||
         dictionaryFields.forall(f => providedDictionaries.contains(f) || cachedDictionaries.contains(f))) {
+      if (dictionaryFields.nonEmpty) {
+        logger.warn("Running deprecated Arrow double pass scan - switch to delta scans instead")
+      }
       // we have all the dictionary values, or we will run a query to determine them up front
       val filter = Option(query.getFilter).filter(_ != Filter.INCLUDE).map(FastFilterFactory.optimize(sft, _))
       val dictionaries = ArrowScan.createDictionaries(ds.stats, sft, filter, dictionaryFields,
         providedDictionaries, cachedDictionaries)
       // set the merged dictionaries in the query where they'll be picked up by our delegates
       hints.setArrowDictionaryEncodedValues(dictionaries.map { case (k, v) => (k, v.iterator.toSeq) })
-      new ArrowScan.BatchReducer(arrowSft, dictionaries, encoding, batchSize, sort)
+      new ArrowScan.BatchReducer(arrowSft, dictionaries, encoding, ipcOpts, batchSize, sort, sorted = false)
     } else if (hints.isArrowMultiFile) {
-      new ArrowScan.FileReducer(arrowSft, dictionaryFields, encoding, sort)
+      logger.warn("Running deprecated Arrow multi file scan - switch to delta scans instead")
+      new ArrowScan.FileReducer(arrowSft, dictionaryFields, encoding, ipcOpts, sort)
     } else {
-      new ArrowScan.DeltaReducer(arrowSft, dictionaryFields, encoding, batchSize, sort)
+      new ArrowScan.DeltaReducer(arrowSft, dictionaryFields, encoding, ipcOpts, batchSize, sort, sorted = false)
     }
 
     // now that we have standardized dictionaries, we can query the delegate stores
     val readers = stores.map { case (store, filter) =>
       val q = new Query(query)
       q.setHints(new Hints(hints))
-      store.getFeatureReader(mergeFilter(q, filter), Transaction.AUTO_COMMIT)
+      store.getFeatureReader(mergeFilter(sft, q, filter), Transaction.AUTO_COMMIT)
     }
 
-    val results = SelfClosingIterator(readers.iterator).flatMap { reader =>
+    def getSingle(reader: FeatureReader[SimpleFeatureType, SimpleFeature]): CloseableIterator[SimpleFeature] = {
       val schema = reader.getFeatureType
       if (schema == org.locationtech.geomesa.arrow.ArrowEncodedSft) {
         // arrow processing has been handled by the store already
@@ -176,13 +199,13 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
       }
     }
 
-    reduce(results)
+    reduce(doParallelScan(readers, getSingle))
   }
 
   private def densityQuery(sft: SimpleFeatureType,
                            readers: Seq[FeatureReader[SimpleFeatureType, SimpleFeature]],
                            hints: Hints): CloseableIterator[SimpleFeature] = {
-    SelfClosingIterator(readers.iterator).flatMap { reader =>
+    def getSingle(reader: FeatureReader[SimpleFeatureType, SimpleFeature]): CloseableIterator[SimpleFeature] = {
       val schema = reader.getFeatureType
       if (schema == DensityScan.DensitySft) {
         // density processing has been handled by the store already
@@ -193,13 +216,14 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
         LocalQueryRunner.transform(copy, CloseableIterator(reader), None, hints, None)
       }
     }
+
+    doParallelScan(readers, getSingle)
   }
 
   private def statsQuery(sft: SimpleFeatureType,
                          readers: Seq[FeatureReader[SimpleFeatureType, SimpleFeature]],
                          hints: Hints): CloseableIterator[SimpleFeature] = {
-    // do the reduce here, as we can't merge json stats
-    val results = SelfClosingIterator(readers.iterator).flatMap { reader =>
+    def getSingle(reader: FeatureReader[SimpleFeatureType, SimpleFeature]): CloseableIterator[SimpleFeature] = {
       val schema = reader.getFeatureType
       if (schema == StatsScan.StatsSft) {
         // stats processing has been handled by the store already
@@ -210,13 +234,17 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
         LocalQueryRunner.transform(copy, CloseableIterator(reader), None, hints, None)
       }
     }
+
+    val results = doParallelScan(readers, getSingle)
+
+    // do the reduce here, as we can't merge json stats
     StatsScan.StatsReducer(sft, hints)(results)
   }
 
   private def binQuery(sft: SimpleFeatureType,
                        readers: Seq[FeatureReader[SimpleFeatureType, SimpleFeature]],
                        hints: Hints): CloseableIterator[SimpleFeature] = {
-    SelfClosingIterator(readers.iterator).flatMap { reader =>
+    def getSingle(reader: FeatureReader[SimpleFeatureType, SimpleFeature]): CloseableIterator[SimpleFeature] = {
       val schema = reader.getFeatureType
       if (schema == BinaryOutputEncoder.BinEncodedSft) {
         // bin processing has been handled by the store already
@@ -227,6 +255,8 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
         LocalQueryRunner.transform(copy, CloseableIterator(reader), None, hints, None)
       }
     }
+
+    doParallelScan(readers, getSingle)
   }
 
   override protected [geomesa] def getReturnSft(sft: SimpleFeatureType, hints: Hints): SimpleFeatureType = {
@@ -241,5 +271,27 @@ class MergedQueryRunner(ds: MergedDataStoreView, stores: Seq[(DataStore, Option[
     } else {
       super.getReturnSft(sft, hints)
     }
+  }
+
+  private def doParallelScan(
+      readers: Seq[FeatureReader[SimpleFeatureType, SimpleFeature]],
+      single: FeatureReader[SimpleFeatureType, SimpleFeature] => CloseableIterator[SimpleFeature]): CloseableIterator[SimpleFeature] = {
+    if (parallel) {
+      SelfClosingIterator(readers.par.map(single).iterator).flatMap(i => i)
+    } else {
+      SelfClosingIterator(readers.iterator).flatMap(single)
+    }
+  }
+}
+
+object MergedQueryRunner {
+
+  trait Queryable {
+    def getFeatureReader(q: Query, t: Transaction): FeatureReader[SimpleFeatureType, SimpleFeature]
+  }
+
+  case class DataStoreQueryable(ds: DataStore) extends Queryable {
+    override def getFeatureReader(q: Query, t: Transaction): FeatureReader[SimpleFeatureType, SimpleFeature] =
+      ds.getFeatureReader(q, t)
   }
 }

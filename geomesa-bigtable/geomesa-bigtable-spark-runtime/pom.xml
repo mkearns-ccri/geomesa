@@ -2,12 +2,17 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <artifactId>geomesa-bigtable_2.11</artifactId>
         <version>2.4.3-SNAPSHOT</version>
+=======
+        <artifactId>geomesa-bigtable_2.12</artifactId>
+        <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>geomesa-bigtable-spark-runtime_2.11</artifactId>
+    <artifactId>geomesa-bigtable-spark-runtime_2.12</artifactId>
     <name>GeoMesa Bigtable Spark Runtime</name>
 
     <dependencies>
@@ -79,6 +84,13 @@
                 </exclusion>
             </exclusions>
         </dependency>
+        <!-- bring in guava and relocate it -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <scope>compile</scope>
+        </dependency>
+
 
         <!-- only needed for packaging into the shaded jar -->
         <dependency>
@@ -118,9 +130,9 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <artifactSet>
                                 <excludes>
+                                    <exclude>org.locationtech.geomesa:geomesa-*-runtime*</exclude>
                                     <exclude>io.netty:*</exclude>
                                     <exclude>org.slf4j:*</exclude>
                                     <exclude>org.geotools:gt-render:*</exclude>
@@ -131,6 +143,7 @@
                                     <exclude>org.scala-lang:*</exclude>
                                 </excludes>
                             </artifactSet>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -145,22 +158,51 @@
                             <relocations>
                                 <relocation>
                                     <pattern>com.google.common</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.bigtable.shaded.com.google.common</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.google.common</shadedPattern>
                                 </relocation>
                                 <relocation>
                                     <pattern>org.apache.commons.codec</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.bigtable.shaded.org.apache.commons.codec
-                                    </shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.org.apache.commons.codec</shadedPattern>
                                 </relocation>
                                 <!-- spark also includes shapeless, relocate to avoid version conflicts -->
                                 <relocation>
                                     <pattern>shapeless</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.bigtable.shaded.shapeless</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.shapeless</shadedPattern>
+                                </relocation>
+                                <!-- avoid conflicts with zeppelin -->
+                                <relocation>
+                                    <pattern>pureconfig</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.pureconfig</shadedPattern>
+                                </relocation>
+                                <!-- Databricks uses an old version of scalalogging, include it to allow us to run on databricks clusters -->
+                                <relocation>
+                                    <pattern>com.typesafe.scalalogging</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.typesafe.scalalogging</shadedPattern>
+                                </relocation>
+                                <!-- we need parquet 1.9.0 in order to do dictionary filtering = 30% speed increase -->
+                                <!-- TODO remove this when spark supports parquet 1.9.0 out of the box -->
+                                <relocation>
+                                    <pattern>org.apache.parquet</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.org.apache.parquet</shadedPattern>
                                 </relocation>
                                 <!-- spark needs json4s to use the jsonpath function -->
                                 <relocation>
                                     <pattern>org.json4s</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.bigtable.shaded.org.json4s</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.org.json4s</shadedPattern>
+                                </relocation>
+                                <!-- paranamer and jackson conflict with spark 3 -->
+                                <relocation>
+                                    <pattern>com.thoughtworks.paranamer</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.thoughtworks.paranamer</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.fasterxml.jackson</shadedPattern>
+                                </relocation>
+                                <!-- Databricks uses an old version of scalalogging, include it to allow us to run on databricks clusters -->
+                                <relocation>
+                                    <pattern>com.typesafe.scalalogging</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.typesafe.scalalogging</shadedPattern>
                                 </relocation>
                             </relocations>
                             <transformers>

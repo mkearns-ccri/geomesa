@@ -28,6 +28,12 @@ Common Properties
 These properties apply to all GeoMesa implementations. Additional properties for different back-end
 databases can be found in the chapters for each one.
 
+geomesa.arrow.format.version
+++++++++++++++++++++++++++++
+
+Sets the IPC format version for Arrow-encoded responses. This is expected to be a valid Arrow version,
+i.e. ``0.16`` or ``0.10``. The Arrow IPC format changed slightly starting with version ``0.15``.
+
 geomesa.audit.provider.impl
 +++++++++++++++++++++++++++
 
@@ -50,8 +56,8 @@ geomesa.density.batch.size
 ++++++++++++++++++++++++++
 
 This property controls the batch size used for running distributed density (heatmap) queries. It needs to be set on
-each region or tablet server. If a query is closed or cancelled before completion, the batch size will determine how
-long the distributed scan will keep running before seeing the cancellation.
+the client making the request (e.g. GeoServer). If a query is closed or cancelled before completion, the batch
+size will determine how long the distributed scan will keep running before seeing the cancellation.
 
 geomesa.distributed.lock.timeout
 ++++++++++++++++++++++++++++++++
@@ -122,6 +128,25 @@ When the ``geomesa.force.count`` or ``QueryHints.EXACT_COUNT`` is true  and maxF
 GeoMesa will run the query to determine how many records are in the result set.
 Otherwise, GeoMesa will use the Stats API and respect the counting setting.  The default for this setting is 1000.
 
+<<<<<<< HEAD
+=======
+geomesa.geometry.length.max
++++++++++++++++++++++++++++
+
+This property controls the maximum number of coordinates that will be allowed in a geometry. During deserialization,
+it is possible that corrupted data will cause the length of a geometry to be incorrect, which can lead to attempting
+to allocate space for a large number of coordinates. This property can be used to set an upper limit on the space
+that will be allocated. By default there is no max length.
+
+geomesa.geometry.nesting.max
+++++++++++++++++++++++++++++
+
+This property controls the maximum level of geometry collections recursively containing other geometry collections.
+During deserialization, it is possible that corrupted data will cause the type of a geometry to be incorrect, which
+can lead to creating many nested geometry collections in a recursive loop, causing a stack overflow. This property
+can be used to set an upper limit on the level of recursion. By default 3 levels of recursion are allowed.
+
+>>>>>>> main
 geomesa.geometry.processing
 +++++++++++++++++++++++++++
 
@@ -167,7 +192,8 @@ geomesa.metadata.expiry
 
 This property controls how often simple feature type metadata is read from the underlying data store.
 Calls to ``updateSchema`` on a data store will not show up in other instances until the metadata
-cache has expired. The expiry is specified as a duration, e.g. ``10 minutes`` or ``1 hour``.
+cache has expired. The expiry is specified as a duration, e.g. ``10 minutes`` or ``1 hour``. The default
+is ``10 minutes``.
 
 geomesa.partition.scan.parallel
 +++++++++++++++++++++++++++++++
@@ -205,6 +231,17 @@ don't intersect the geometry. This behavior can be controlled through two proper
 ``geomesa.query.decomposition.multiplier`` controls the maximum number of envelopes that a geometry will be
 decomposed into. If set below 2, no decomposition will be performed and instead the geometry envelope will be used.
 Also see ``geomesa.query.decomposition.bits``, above.
+
+geomesa.query.processing.or.threshold
++++++++++++++++++++++++++++++++++++++
+
+GeoMesa attempts to process input filters in order to determine the best query plan for a given predicate. However,
+since queries can be arbitrarily complex, this processing can potentially take a significant amount of time.
+``geomesa.query.processing.or.threshold`` sets a threshold for the complexity of an OR filter that
+will be considered, based on the permutations of the filter. For example, the filter ``A OR B OR C`` has three
+permutations, while ``(A OR B) AND (C OR D)`` has four permutations.
+
+By default complex OR predicates will not be considered, which is suitable for most queries.
 
 geomesa.query.timeout
 +++++++++++++++++++++
@@ -248,6 +285,22 @@ This property controls how long simple feature serializers will be cached in mem
 reduce the memory footprint of your application, at the cost of increased processing time. The expiry is specified
 as a duration, e.g. ``10 minutes`` or ``1 hour``. The default is ``1 hour``.
 
+<<<<<<< HEAD
+=======
+geomesa.sort.memory.threshold
++++++++++++++++++++++++++++++
+
+This property can be used to constrain the memory used to sort result sets. GeoMesa sorts results in the client
+process memory, since the supported back-end databases don't offer native ordering. To avoid having large
+result sets exceed the client memory capacity, a memory threshold can be set. Once the size of a result set
+exceeds this threshold, additional results will be written to disk and sorted there. Note that the actual memory
+used may exceed the threshold, as the memory footprint calculation is an estimation. The threshold is specified
+as a number of bytes, e.g. ``10MB`` or ``1GB``. The default is to always sort in memory.
+
+Note that distributed Arrow queries will never use disk to sort, due to the nature of Arrow result batches. For
+supported back-ends, sorting on disk for Arrow queries can be achieved by disabling remote Arrow processing.
+
+>>>>>>> main
 geomesa.sft.config.urls
 +++++++++++++++++++++++
 
@@ -257,9 +310,9 @@ a comma-separated list of arbitrary URLs. For more information on defining types
 geomesa.stats.batch.size
 ++++++++++++++++++++++++
 
-This property controls the batch size used for running distributed stat queries. It needs to be set on each
-region or tablet server. If a query is closed or cancelled before completion, the batch size will determine how
-long the distributed scan will keep running before seeing the cancellation.
+This property controls the batch size used for running distributed stat queries. It needs to be set on the client
+making the request (e.g. GeoServer). If a query is closed or cancelled before completion, the batch size will
+determine how long the distributed scan will keep running before seeing the cancellation.
 
 .. _stats_generate_config:
 
@@ -269,7 +322,8 @@ geomesa.stats.generate
 This property controls whether GeoMesa will generate statistics for a given feature type during ingestion. It
 is specified as a Boolean, ``true`` or ``false``. This property will be used when a feature type is first created,
 if stats are not explicitly configured in the feature type user data or through the ``geomesa.stats.enable``
-data store parameter. See :ref:`stat_config` for details on configuring the feature type.
+data store parameter. See :ref:`stat_config` for details on configuring the feature type. Note that
+stats are currently only implemented for the Accumulo and Redis data stores.
 
 geomesa.strategy.decider
 ++++++++++++++++++++++++
@@ -278,5 +332,5 @@ This property allows for overriding strategy selection during query planning. It
 full class name for a class implementing ``org.locationtech.geomesa.index.planning.StrategyDecider``.
 The class must have a no-arg constructor.
 
-By default GeoMesa will use cost-based query planning, which should work well for most situations. See
+By default GeoMesa will use heuristic-based query planning, which should work well for most situations. See
 :ref:`query_planning` for more details on query planning strategies.

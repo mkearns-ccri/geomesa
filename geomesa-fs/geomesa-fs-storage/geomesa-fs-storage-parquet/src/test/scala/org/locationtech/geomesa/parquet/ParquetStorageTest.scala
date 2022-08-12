@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -22,7 +22,7 @@ import org.junit.runner.RunWith
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.fs.storage.api.FileSystemStorage.FileSystemWriter
 import org.locationtech.geomesa.fs.storage.api._
-import org.locationtech.geomesa.fs.storage.common.StorageKeys
+import org.locationtech.geomesa.fs.storage.common.{SizeableFileSystemStorage, StorageKeys}
 import org.locationtech.geomesa.fs.storage.common.metadata.FileBasedMetadataFactory
 import org.locationtech.geomesa.utils.collection.SelfClosingIterator
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
@@ -101,7 +101,6 @@ class ParquetStorageTest extends Specification with AllExpectations with LazyLog
 
         // verify we can load an existing storage
         val loaded = new FileBasedMetadataFactory().load(context)
-        loaded.foreach(_.reload()) // ensure state is loaded
         loaded must beSome
         testQuery(new ParquetFileSystemStorageFactory().apply(context, loaded.get), sft)("INCLUDE", null, features)
       }
@@ -111,7 +110,7 @@ class ParquetStorageTest extends Specification with AllExpectations with LazyLog
       val sft = SimpleFeatureTypes.createType("parquet-test-complex",
         "name:String,age:Int,time:Long,height:Float,weight:Double,bool:Boolean," +
             "uuid:UUID,bytes:Bytes,list:List[Int],map:Map[String,Long]," +
-            "line:LineString,mpt:MultiPoint,poly:Polygon,mline:MultiLineString,mpoly:MultiPolygon," +
+            "line:LineString,mpt:MultiPoint,poly:Polygon,mline:MultiLineString,mpoly:MultiPolygon,g:Geometry," +
             "dtg:Date,*geom:Point:srid=4326")
 
       val features = (0 until 10).map { i =>
@@ -139,6 +138,7 @@ class ParquetStorageTest extends Specification with AllExpectations with LazyLog
         )
         sf.setAttribute("mline", s"MULTILINESTRING((0 2, 2 $i, 8 6),(0 $i, 2 $i, 8 ${10 - i}))")
         sf.setAttribute("mpoly", s"MULTIPOLYGON(((-1 0, 0 $i, 1 0, 0 -1, -1 0)), ((-2 6, 1 6, 1 3, -2 3, -2 6), (-1 5, 2 5, 2 2, -1 2, -1 5)))")
+        sf.setAttribute("g", sf.getAttribute(Seq("line", "mpt", "poly", "mline", "mpoly").drop(i % 5).head))
         sf.setAttribute("dtg", f"2014-01-${i + 1}%02dT00:00:01.000Z")
         sf.setAttribute("geom", s"POINT(4$i 5$i)")
         sf
@@ -313,6 +313,53 @@ class ParquetStorageTest extends Specification with AllExpectations with LazyLog
       }
     }
 
+    "write files with a target size" in {
+      val sft = SimpleFeatureTypes.createType("parquet-test", "name:String,age:Int,dtg:Date,*geom:Point:srid=4326")
+
+      val features = (0 until 10000).map { i =>
+        val sf = new ScalaSimpleFeature(sft, i.toString)
+        sf.getUserData.put(Hints.USE_PROVIDED_FID, java.lang.Boolean.TRUE)
+        sf.setAttribute(0, s"name${i % 10}")
+        sf.setAttribute(1, s"${i % 10}")
+        sf.setAttribute(2, f"2014-01-${i % 10 + 1}%02dT00:00:01.000Z")
+        sf.setAttribute(3, s"POINT(4${i % 10} 5${i % 10})")
+        sf
+      }
+
+      // note: this is somewhat of a magic number, in that it works the first time through with no remainder
+      val targetSize = 1700L
+
+      withTestDir { dir =>
+        val context = FileSystemContext(FileContext.getFileContext(dir.toUri), config, dir)
+        val metadata =
+          new FileBasedMetadataFactory()
+              .create(context, Map.empty, Metadata(sft, "parquet", scheme, leafStorage = true, Some(targetSize)))
+        val storage = new ParquetFileSystemStorageFactory().apply(context, metadata)
+
+        storage must not(beNull)
+
+        val writers = scala.collection.mutable.Map.empty[String, FileSystemWriter]
+
+        features.foreach { f =>
+          val partition = storage.metadata.scheme.getPartitionName(f)
+          val writer = writers.getOrElseUpdate(partition, storage.getWriter(partition))
+          writer.write(f)
+        }
+
+        writers.foreach(_._2.close())
+
+        logger.debug(s"wrote to ${writers.size} partitions for ${features.length} features")
+
+        val partitions = storage.getPartitions.map(_.name)
+        partitions must haveLength(writers.size)
+        foreach(partitions) { partition =>
+          val paths = storage.getFilePaths(partition)
+          paths.size must beGreaterThan(1)
+          foreach(paths)(p => context.fc.getFileStatus(p.path).getLen must beCloseTo(targetSize, targetSize / 10))
+        }
+      }
+    }
+
     "read old files" in {
       val url = getClass.getClassLoader.getResource("data/2.3.0/example-csv/")
       url must not(beNull)
@@ -320,7 +367,6 @@ class ParquetStorageTest extends Specification with AllExpectations with LazyLog
       val context = FileSystemContext(FileContext.getFileContext(url.toURI), config, path)
       val metadata = StorageMetadataFactory.load(context).orNull
       metadata must not(beNull)
-      metadata.reload() // ensure metadata is loaded
       val storage = FileSystemStorageFactory(context, metadata)
 
       val features = SelfClosingIterator(storage.getReader(new Query("example-csv"))).toList.sortBy(_.getID)

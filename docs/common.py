@@ -35,7 +35,8 @@ from recommonmark.parser import CommonMarkParser
 # ones.
 extensions = [
     'sphinx.ext.mathjax',
-    'sphinx_tabs.tabs'
+    'sphinx_tabs.tabs',
+    'sphinx_copybutton'
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -52,7 +53,7 @@ master_doc = 'index'
 # General information about the project.
 project = u'GeoMesa'
 # note: shown in our custom footer
-copyright = u'2013-2019'
+copyright = u'2013-2021'
 author = u''
 
 # The version info for the project you're documenting, acts as replacement for
@@ -61,10 +62,9 @@ author = u''
 #
 # Warning: current version numbers are handled in versions.py, which is preprocessed
 # by Maven. Do not hardcode current GeoMesa version numbers here!
-from target.versions import release,version,version_devel,release_last
+from target.versions import release,version,release_version,scala_binary_version
 
 # Other versions and variables unlikely to change on every point release
-release_eclipse = '1.2.0'
 url_github_archive = "https://github.com/locationtech/geomesa/archive"
 
 url_locationtech_release = "https://repo.eclipse.org/content/repositories/geomesa-releases/org/locationtech/geomesa"
@@ -80,60 +80,61 @@ rst_epilog = """
 
 .. _Java JDK 8: http://www.oracle.com/technetwork/java/javase/downloads/index.html
 
-.. |release_tarball_accumulo| replace:: %(url_locationtech_release)s/geomesa-accumulo-dist_2.11/%(release_last)s/geomesa-accumulo_2.11-%(release_last)s-bin.tar.gz
+.. |release_tarball_accumulo| replace:: %(url_locationtech_release)s/geomesa-accumulo-dist_%(scala_binary_version)s/%(release_version)s/geomesa-accumulo_%(scala_binary_version)s-%(release_version)s-bin.tar.gz
 
-.. |release_tarball_kafka| replace:: %(url_locationtech_release)s/geomesa-kafka-dist_2.11/%(release_last)s/geomesa-kafka_2.11-%(release_last)s-bin.tar.gz
+.. |release_tarball_kafka| replace:: %(url_locationtech_release)s/geomesa-kafka-dist_%(scala_binary_version)s/%(release_version)s/geomesa-kafka_%(scala_binary_version)s-%(release_version)s-bin.tar.gz
 
-.. |release_tarball_hbase| replace:: %(url_locationtech_release)s/geomesa-hbase-dist_2.11/%(release_last)s/geomesa-hbase_2.11-%(release_last)s-bin.tar.gz
+.. |release_tarball_hbase| replace:: %(url_locationtech_release)s/geomesa-hbase-dist_%(scala_binary_version)s/%(release_version)s/geomesa-hbase_%(scala_binary_version)s-%(release_version)s-bin.tar.gz
 
-.. |release_tarball_cassandra| replace:: %(url_locationtech_release)s/geomesa-cassandra-dist_2.11/%(release_last)s/geomesa-cassandra_2.11-%(release_last)s-bin.tar.gz
+.. |release_tarball_cassandra| replace:: %(url_locationtech_release)s/geomesa-cassandra-dist_%(scala_binary_version)s/%(release_version)s/geomesa-cassandra_%(scala_binary_version)s-%(release_version)s-bin.tar.gz
 
-.. |release_source_tarball| replace:: %(url_github_archive)s/geomesa_2.11-%(release_last)s.tar.gz
-
-.. |eclipse_release| replace:: %(release_eclipse)s
-
-.. |eclipse_release_tarball| replace:: http://download.locationtech.org/geomesa/%(release_eclipse)s/geomesa-dist-%(release_eclipse)s-bin.tar.gz
-
-.. |eclipse_release_source_tarball| replace:: http://download.locationtech.org/geomesa/%(release_eclipse)s/geomesa-source-%(release_eclipse)s.tar.gz
-
-.. |development| replace:: %(version_devel)s
+.. |release_source_tarball| replace:: %(url_github_archive)s/geomesa_%(scala_binary_version)s-%(release_version)s.tar.gz
 
 .. |maven_version| replace:: 3.5.2 or later
 
-.. |geoserver_version| replace:: 2.15.x
+.. |geoserver_version| replace:: 2.17.3
 
-.. |geotools_version| replace:: 21.x
+.. |geotools_version| replace:: 23.x
 
-.. |accumulo_required_version| replace:: 1.7.x, 1.8.x or 1.9.x
+.. |accumulo_required_version| replace:: 1.7.x, 1.8.x, 1.9.x or 2.0.x
 
-.. |accumulo_supported_versions| replace:: versions 1.7.x, 1.8.x and 1.9.x
+.. |accumulo_supported_versions| replace:: versions 1.7.x, 1.8.x, 1.9.x and 2.0.x
 
-.. |hbase_required_version| replace::  1.3.x or 1.4.x
+.. |hbase_required_version| replace::  1.4.x or 2.2.x
 
-.. |hbase_supported_versions| replace:: versions 1.3.x and 1.4.x
+.. |hbase_supported_versions| replace:: versions 1.4.x and 2.2.x
 
-.. |hbase_bundled_version| replace:: 1.3.1
+.. |hbase_bundled_version| replace:: 2.2.3
 
-.. |hadoop_version| replace:: 2.6 or later
+.. |hadoop_version| replace:: 2.8 or later
 
 .. |zookeeper_version| replace:: 3.4.5 or later
 
-.. |kafka_version| replace:: 0.9.x or later
+.. |kafka_version| replace:: 0.10.x or later
+
+.. |kafka_tested_version| replace:: 2.7.0
 
 .. |cassandra_version| replace:: 3.x
 
+.. |redis_version| replace:: 5.0.x
+
 .. |kudu_version| replace:: 1.7.x
 
-.. |spark_required_version| replace:: 2.2.x, 2.3.x or 2.4.x
+.. |spark_required_version| replace:: 2.4.x, 3.0.x or 3.1.x
 
-.. |spark_supported_versions| replace:: versions 2.2.x, 2.3.x and 2.4.x
+.. |spark_supported_versions| replace:: versions 2.4.x, 3.0.x and 3.1.x
 
-.. |release_last| replace:: %(release_last)s
+.. |release_version| replace:: %(release_version)s
+
+.. |release_version_literal| replace:: ``%(release_version)s``
+
+.. |scala_binary_version| replace:: %(scala_binary_version)s
+
+.. |scala_release_version| replace:: ``%(scala_binary_version)s-%(release_version)s``
 
 """ % {"release": release,
-       "release_last": release_last,
-       "release_eclipse": release_eclipse,
-       "version_devel": version_devel,
+       "release_version": release_version,
+       "scala_binary_version": scala_binary_version,
        "url_locationtech_release": url_locationtech_release,
        "url_github_archive": url_github_archive}
 
@@ -371,3 +372,9 @@ texinfo_documents = [
 
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
+
+# strip out the leading `$` in bash and `>` accumulo examples
+copybutton_prompt_text = "[$>] "
+copybutton_prompt_is_regexp = True
+# but keep all lines, as we also have a lot of scala/java examples that don't have prompts
+copybutton_only_copy_prompt_lines = False

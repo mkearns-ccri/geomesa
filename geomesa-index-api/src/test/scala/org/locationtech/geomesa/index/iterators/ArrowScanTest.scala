@@ -1,5 +1,9 @@
 /***********************************************************************
+<<<<<<< HEAD
  * Copyright (c) 2013-2020 Commonwealth Computer Research, Inc.
+=======
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
+>>>>>>> main
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,7 +15,11 @@ package org.locationtech.geomesa.index.iterators
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
 import com.typesafe.scalalogging.LazyLogging
+<<<<<<< HEAD
 import org.apache.arrow.memory.RootAllocator
+=======
+import org.apache.arrow.vector.ipc.message.IpcOption
+>>>>>>> main
 import org.geotools.util.Converters
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.arrow.io.SimpleFeatureArrowFileReader
@@ -54,7 +62,11 @@ class ArrowScanTest extends Specification with LazyLogging {
   "ArrowScan's MultiFileAggregate" should {
     "be able to be reused" in {
 
+<<<<<<< HEAD
       val mfa = new MultiFileAggregate(sft, Nil, SimpleFeatureEncoding.min(true, false))
+=======
+      val mfa = new MultiFileAggregate(sft, Nil, SimpleFeatureEncoding.min(includeFids = true), new IpcOption())
+>>>>>>> main
 
       mfa.init()
       mfa.aggregate(features(0))
@@ -72,6 +84,7 @@ class ArrowScanTest extends Specification with LazyLogging {
         val innerOut = new ByteArrayOutputStream
         innerOut.write(bytes)
         def innnerIn() = new ByteArrayInputStream(innerOut.toByteArray)
+<<<<<<< HEAD
         WithClose(new RootAllocator(Long.MaxValue)) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(innnerIn)(allocator)) { reader =>
             SelfClosingIterator(reader.features()).foreach {
@@ -79,6 +92,13 @@ class ArrowScanTest extends Specification with LazyLogging {
                 count += 1
                 logger.debug(s"\tFeature: ${f.getID}: ${f.getAttributes}")
             }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(innnerIn)) { reader =>
+          SelfClosingIterator(reader.features()).foreach {
+            f =>
+              count += 1
+              logger.debug(s"\tFeature: ${f.getID}: ${f.getAttributes}")
+>>>>>>> main
           }
         }
         count

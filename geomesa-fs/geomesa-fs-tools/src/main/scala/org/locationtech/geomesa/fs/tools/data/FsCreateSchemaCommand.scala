@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -7,7 +7,7 @@
  ***********************************************************************/
 
 /***********************************************************************
-  * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+  * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
   * All rights reserved. This program and the accompanying materials
   * are made available under the terms of the Apache License, Version 2.0
   * which accompanies this distribution and is available at
@@ -19,10 +19,10 @@ package org.locationtech.geomesa.fs.tools.data
 import com.beust.jcommander.{ParameterException, Parameters}
 import org.locationtech.geomesa.fs.data.FileSystemDataStore
 import org.locationtech.geomesa.fs.storage.common.StorageKeys
+import org.locationtech.geomesa.fs.storage.common.utils.PartitionSchemeArgResolver
 import org.locationtech.geomesa.fs.tools.FsDataStoreCommand
 import org.locationtech.geomesa.fs.tools.FsDataStoreCommand.{FsParams, OptionalEncodingParam, OptionalSchemeParams}
 import org.locationtech.geomesa.fs.tools.data.FsCreateSchemaCommand.FsCreateSchemaParams
-import org.locationtech.geomesa.fs.tools.utils.PartitionSchemeArgResolver
 import org.locationtech.geomesa.tools.data.CreateSchemaCommand
 import org.locationtech.geomesa.tools.data.CreateSchemaCommand.CreateSchemaParams
 import org.opengis.feature.simple.SimpleFeatureType
@@ -72,6 +72,10 @@ object FsCreateSchemaCommand {
 
     if (errors.nonEmpty) {
       throw new ParameterException(s"The following options are required: ${errors.mkString(" ")}")
+    }
+
+    if (params.targetFileSize != null) {
+      sft.setTargetFileSize(params.targetFileSize)
     }
 
     // Can use this to set things like compression and summary levels for parquet in the sft user data

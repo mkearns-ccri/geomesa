@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,6 +11,7 @@ package org.locationtech.geomesa.tools.export
 import com.beust.jcommander.{ParameterException, Parameters}
 import com.typesafe.scalalogging.LazyLogging
 import org.geotools.data.Query
+import org.geotools.util.factory.Hints
 import org.locationtech.geomesa.convert.EvaluationContext
 import org.locationtech.geomesa.convert2.SimpleFeatureConverter
 import org.locationtech.geomesa.index.planning.LocalQueryRunner
@@ -60,15 +61,21 @@ class ConvertCommand extends Command with MethodProfiling with LazyLogging {
         inputs.iterator.flatMap(PathUtils.interpretPath)
       }
       WithClose(SimpleFeatureConverter(sft, config)) { converter =>
-        val ec = converter.createEvaluationContext(EvaluationContext.inputFileParam(""))
+        val ec = converter.createEvaluationContext()
         val query = ExportCommand.createQuery(sft, params)
         val exporter = Option(params.chunkSize) match {
           case None    => new Exporter(ExportOptions(params), query.getHints, Map.empty)
           case Some(c) => new ChunkedExporter(ExportOptions(params), query.getHints, Map.empty, c)
         }
         try {
-          exporter.start(query.getHints.getReturnSft)
-          val count = WithClose(ConvertCommand.convertFeatures(files, converter, ec, query))(exporter.export)
+          val count = WithClose(ConvertCommand.convertFeatures(files, converter, ec, query)) { iter =>
+            if (!params.suppressEmpty || iter.hasNext) {
+              exporter.start(query.getHints.getReturnSft)
+              exporter.export(iter)
+            } else {
+              Some(0L)
+            }
+          }
           val records = ec.line - (if (params.noHeader) { 0 } else { params.files.size })
           Command.user.info(s"Converted ${getPlural(records, "line")} "
               + s"with ${getPlural(ec.success.getCount, "success", "successes")} "
@@ -99,13 +106,14 @@ object ConvertCommand extends LazyLogging {
       ec: EvaluationContext,
       query: Query): CloseableIterator[SimpleFeature] = {
 
-    import org.locationtech.geomesa.convert.EvaluationContext.RichEvaluationContext
     import org.locationtech.geomesa.index.conf.QueryHints.RichHints
 
     def convert(): CloseableIterator[SimpleFeature] = CloseableIterator(files).flatMap { file =>
       file.open.flatMap { case (name, is) =>
-        ec.setInputFilePath(name.getOrElse(file.path))
-        converter.process(is, ec)
+        val params = EvaluationContext.inputFileParam(name.getOrElse(file.path))
+        val context = converter.createEvaluationContext(params, ec.success, ec.failure)
+        val features = converter.process(is, context)
+        CloseableIterator(features, { features.close(); ec.line += context.line })
       }
     }
 
@@ -123,7 +131,7 @@ object ConvertCommand extends LazyLogging {
       import org.locationtech.geomesa.filter.filterToString
 
       val stats = new RunnableStats(null) {
-        override protected def query[T <: Stat](sft: SimpleFeatureType, ignored: Filter, stats: String) : Option[T] = {
+        override protected def query[T <: Stat](sft: SimpleFeatureType, ignored: Filter, stats: String, queryHints: Hints) : Option[T] = {
           val stat = Stat(sft, stats).asInstanceOf[T]
           try {
             WithClose(limit(filter(convert())))(_.foreach(stat.observe))

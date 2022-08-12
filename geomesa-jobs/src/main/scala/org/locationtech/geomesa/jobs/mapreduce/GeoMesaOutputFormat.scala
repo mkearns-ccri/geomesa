@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -21,7 +21,7 @@ import org.locationtech.geomesa.jobs.GeoMesaConfigurator
 import org.locationtech.geomesa.jobs.mapreduce.GeoMesaOutputFormat.GeoMesaRecordWriter
 import org.locationtech.geomesa.utils.geotools.FeatureUtils
 import org.locationtech.geomesa.utils.index.IndexMode
-import org.locationtech.geomesa.utils.io.{CloseQuietly, WithStore}
+import org.locationtech.geomesa.utils.io.CloseQuietly
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 
 /**
@@ -55,7 +55,7 @@ object GeoMesaOutputFormat {
 
   import scala.collection.JavaConverters._
 
-  object Counters {
+  object OutputCounters {
     val Group   = "org.locationtech.geomesa.jobs.output"
     val Written = "written"
     val Failed  = "failed"
@@ -79,15 +79,6 @@ object GeoMesaOutputFormat {
     indices.foreach(GeoMesaConfigurator.setIndicesOut(conf, _))
   }
 
-  @deprecated("use setOutput")
-  def configureDataStore(job: Job, params: Map[String, String]): Unit = {
-    WithStore[DataStore](params) { ds =>
-      require(ds != null, "Invalid data store parameters")
-      GeoMesaConfigurator.setDataStoreOutParams(job.getConfiguration, params)
-      ds.getTypeNames.map(ds.getSchema).foreach(GeoMesaConfigurator.setSerialization(job.getConfiguration, _))
-    }
-  }
-
   /**
     * Record writer for GeoMesa datastores.
     *
@@ -100,14 +91,14 @@ object GeoMesaOutputFormat {
 
     private val writers = scala.collection.mutable.Map.empty[String, FeatureWriter[SimpleFeatureType, SimpleFeature]]
 
-    private val written = context.getCounter(GeoMesaOutputFormat.Counters.Group, GeoMesaOutputFormat.Counters.Written)
-    private val failed = context.getCounter(GeoMesaOutputFormat.Counters.Group, GeoMesaOutputFormat.Counters.Failed)
+    private val written = context.getCounter(OutputCounters.Group, OutputCounters.Written)
+    private val failed = context.getCounter(OutputCounters.Group, OutputCounters.Failed)
 
     override def write(key: Text, value: SimpleFeature): Unit = {
       try {
         val sftName = value.getFeatureType.getTypeName
         val writer = writers.getOrElseUpdate(sftName, createWriter(sftName))
-        FeatureUtils.write(writer, value, useProvidedFid = true)
+        FeatureUtils.write(writer, value)
         written.increment(1)
       } catch {
         case e: Exception =>

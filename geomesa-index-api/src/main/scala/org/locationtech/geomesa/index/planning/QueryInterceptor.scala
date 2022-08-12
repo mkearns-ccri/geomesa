@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import com.typesafe.scalalogging.LazyLogging
 import org.geotools.data.{DataStore, Query}
+import org.locationtech.geomesa.index.api.QueryStrategy
 import org.locationtech.geomesa.index.metadata.TableBasedMetadata
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.Configs
 import org.locationtech.geomesa.utils.io.CloseWithLogging
@@ -40,6 +41,14 @@ trait QueryInterceptor extends Closeable {
     * @param query query
     */
   def rewrite(query: Query): Unit
+
+  /**
+   * Hook to allow interception of a query after extracting the query values
+   *
+   * @param strategy query strategy
+   * @return an exception if the query should be stopped
+   */
+  def guard(strategy: QueryStrategy): Option[IllegalArgumentException] = None
 }
 
 object QueryInterceptor extends LazyLogging {
@@ -80,7 +89,7 @@ object QueryInterceptor extends LazyLogging {
           Option(ds.getSchema(key)).flatMap(s => Option(s.getUserData.get(Configs.QueryInterceptors))) match {
             case None if oldValue.isEmpty => oldValue
             case Some(classes) if classes == oldValue.map(_.getClass.getName).mkString(",") => oldValue
-            case _ => oldValue.foreach(CloseWithLogging.apply); QueryInterceptorFactoryImpl.this.load(key)
+            case _ => CloseWithLogging(oldValue); QueryInterceptorFactoryImpl.this.load(key)
           }
         }
       }
@@ -90,7 +99,7 @@ object QueryInterceptor extends LazyLogging {
       override def apply(sft: SimpleFeatureType): Seq[QueryInterceptor] = cache.get(sft.getTypeName)
 
       override def close(): Unit = {
-        cache.asMap.asScala.foreach { case (_, interceptors) => interceptors.foreach(CloseWithLogging.apply) }
+        cache.asMap.asScala.foreach { case (_, interceptors) => CloseWithLogging(interceptors) }
         cache.invalidateAll()
       }
 

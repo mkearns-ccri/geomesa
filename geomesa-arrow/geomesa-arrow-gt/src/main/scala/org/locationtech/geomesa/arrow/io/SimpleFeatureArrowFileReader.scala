@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -10,7 +10,6 @@ package org.locationtech.geomesa.arrow.io
 
 import java.io.{Closeable, InputStream}
 
-import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.vector.dictionary.DictionaryProvider
 import org.apache.arrow.vector.types.pojo.Field
 import org.locationtech.geomesa.arrow.features.ArrowSimpleFeature
@@ -20,7 +19,8 @@ import org.locationtech.geomesa.arrow.vector.SimpleFeatureVector.{DescriptorKey,
 import org.locationtech.geomesa.arrow.vector.{ArrowDictionary, SimpleFeatureVector}
 import org.locationtech.geomesa.filter.Bounds.Bound
 import org.locationtech.geomesa.filter.{Bounds, FilterHelper}
-import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
+import org.locationtech.geomesa.utils.collection.CloseableIterator
+import org.locationtech.geomesa.utils.geotools.{ObjectType, SimpleFeatureTypes}
 import org.opengis.feature.simple.SimpleFeatureType
 import org.opengis.filter.Filter
 
@@ -58,10 +58,14 @@ trait SimpleFeatureArrowFileReader extends Closeable {
     * @param filter filter to apply
     * @return
     */
-  def features(filter: Filter = Filter.INCLUDE): Iterator[ArrowSimpleFeature] with Closeable
+  def features(filter: Filter = Filter.INCLUDE): CloseableIterator[ArrowSimpleFeature]
 }
 
 object SimpleFeatureArrowFileReader {
+
+  import org.locationtech.geomesa.utils.geotools.RichAttributeDescriptors.RichAttributeDescriptor
+
+  import scala.collection.JavaConverters._
 
   type VectorToIterator = SimpleFeatureVector => Iterator[ArrowSimpleFeature]
 
@@ -70,22 +74,18 @@ object SimpleFeatureArrowFileReader {
     * the input stream. Returned features will be valid until `close()` is called
     *
     * @param is input stream
-    * @param allocator buffer allocator
     * @return
     */
-  def caching(is: InputStream)(implicit allocator: BufferAllocator): SimpleFeatureArrowFileReader =
-    new CachingSimpleFeatureArrowFileReader(is)
+  def caching(is: InputStream): SimpleFeatureArrowFileReader = new CachingSimpleFeatureArrowFileReader(is)
 
   /**
     * A reader that streams results. Repeated calls to `features()` will re-read the input stream. Returned
     * features may not be valid after a call to `next()`, as the underlying data may be reclaimed.
     *
     * @param is creates a new input stream for reading
-    * @param allocator buffer allocator
     * @return
     */
-  def streaming(is: () => InputStream)(implicit allocator: BufferAllocator): SimpleFeatureArrowFileReader =
-    new StreamingSimpleFeatureArrowFileReader(is)
+  def streaming(is: () => InputStream): SimpleFeatureArrowFileReader = new StreamingSimpleFeatureArrowFileReader(is)
 
   /**
     *
@@ -93,14 +93,22 @@ object SimpleFeatureArrowFileReader {
     * @param provider dictionary provider
     * @return
     */
-  private [io] def loadDictionaries(fields: Seq[Field],
-                                    provider: DictionaryProvider,
-                                    precision: SimpleFeatureEncoding): Map[String, ArrowDictionary] = {
+  private [io] def loadDictionaries(
+      fields: Seq[Field],
+      provider: DictionaryProvider,
+      precision: SimpleFeatureEncoding): Map[String, ArrowDictionary] = {
     fields.flatMap { field =>
-      Option(field.getDictionary).toSeq.map { encoding =>
+      // check top-level dictionaries plus nested (i.e. for list-type attributes)
+      val encodings = Seq(field.getDictionary) ++ field.getChildren.asScala.map(_.getDictionary)
+      encodings.collect { case encoding if encoding != null =>
         val descriptor = SimpleFeatureTypes.createDescriptor(field.getMetadata.get(DescriptorKey))
+        val bindings = {
+          val main = ObjectType.selectType(descriptor)
+          // for list types, get the list item binding (which is the tail of the bindings)
+          if (descriptor.isList) { main.tail } else { main }
+        }
         val vector = provider.lookup(encoding.getId).getVector
-        field.getName -> ArrowDictionary.create(encoding, vector, descriptor, precision)
+        field.getName -> ArrowDictionary.create(encoding, vector, bindings, precision)
       }
     }.toMap
   }

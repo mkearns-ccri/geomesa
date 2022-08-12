@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -102,6 +102,34 @@ class ShapefileConverterTest extends Specification {
 
         res.map(_.getAttribute("NAME")) must containAllOf(Seq("Alaska", "California", "New York", "Virginia"))
         res.map(_.getAttribute("STUSPS")) must containAllOf(Seq("AK", "CA", "NY", "VA"))
+      }
+    }
+
+    "parse shapefile with cpg file" in {
+      val spec = "*the_geom:Point,name:String"
+      val sft = SimpleFeatureTypes.createType("gis_osm_pofw", spec)
+      lazy val shp = this.getClass.getClassLoader.getResource("gis_osm_pofw_free_1.shp")
+      lazy val shpFile = Paths.get(shp.toURI).toFile.getAbsolutePath
+
+      val conf = ConfigFactory.parseString(
+        """
+          |{
+          |  "id-field" : "$0",
+          |  "type" : "shp",
+          |  "fields" : [
+          |    { "name" : "the_geom", "transform" : "$1" },
+          |    { "name" : "name", "transform" : "$5" }
+          |  ]
+          |}
+        """.stripMargin)
+
+      WithClose(SimpleFeatureConverter(sft, conf)) { converter =>
+        converter must not(beNull)
+        val ec = converter.createEvaluationContext(EvaluationContext.inputFileParam(shpFile))
+        val res = SelfClosingIterator(converter.process(shp.openStream(), ec)).toList
+
+        // strings should be properly decoded
+        res.map(_.getAttribute("name")) must containAllOf(Seq("法海寺", "རུ་ཐོག་དགོན་ (日多寺)", "Pagoda"))
       }
     }
   }

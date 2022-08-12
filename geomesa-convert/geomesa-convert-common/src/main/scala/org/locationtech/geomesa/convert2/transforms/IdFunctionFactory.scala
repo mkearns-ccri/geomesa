@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,24 +8,24 @@
 
 package org.locationtech.geomesa.convert2.transforms
 
-import java.nio.charset.StandardCharsets
-import java.util.{Date, UUID}
-
 import com.google.common.hash.Hashing
 import com.typesafe.scalalogging.LazyLogging
-import org.locationtech.jts.geom.{Geometry, Point}
 import org.apache.commons.codec.binary.Base64
-import org.locationtech.geomesa.convert.EvaluationContext
 import org.locationtech.geomesa.convert2.transforms.TransformerFunction.NamedTransformerFunction
 import org.locationtech.geomesa.curve.TimePeriod
 import org.locationtech.geomesa.utils.uuid.Z3UuidGenerator
+import org.locationtech.jts.geom.{Geometry, Point}
 
+import java.nio.charset.StandardCharsets
+import java.util.{Date, UUID}
 import scala.util.control.NonFatal
 
 class IdFunctionFactory extends TransformerFunctionFactory with LazyLogging {
 
   override def functions: Seq[TransformerFunction] =
-    Seq(string2Bytes, md5, uuid, uuidZ3, uuidZ3Centroid, base64, murmur3_32, murmur3_128)
+    Seq(string2Bytes, md5, uuid, uuidZ3, uuidZ3Centroid, base64, murmur3_32, murmur3_64, murmur3_128)
+
+  private val murmur3_128Hashing = Hashing.murmur3_128()
 
   private val string2Bytes = TransformerFunction("string2bytes", "stringToBytes") {
     args => args(0).asInstanceOf[String].getBytes(StandardCharsets.UTF_8)
@@ -55,26 +55,42 @@ class IdFunctionFactory extends TransformerFunctionFactory with LazyLogging {
     }
   }
 
+  @deprecated("Replaced with base64Encode")
   private val base64 = TransformerFunction.pure("base64") { args =>
     Base64.encodeBase64URLSafeString(args(0).asInstanceOf[Array[Byte]])
   }
 
   private val md5: TransformerFunction = new NamedTransformerFunction(Seq("md5"), pure = true) {
     private val hasher = Hashing.md5()
-    override def eval(args: Array[Any])(implicit ctx: EvaluationContext): Any =
+    override def apply(args: Array[AnyRef]): AnyRef =
       hasher.hashBytes(args(0).asInstanceOf[Array[Byte]]).toString
   }
 
   private val murmur3_32: TransformerFunction = new NamedTransformerFunction(Seq("murmur3_32"), pure = true) {
     private val hasher = Hashing.murmur3_32()
-    override def eval(args: Array[Any])(implicit ctx: EvaluationContext): Any =
+    override def apply(args: Array[AnyRef]): AnyRef =
       hasher.hashString(args(0).toString, StandardCharsets.UTF_8)
   }
 
-  private val murmur3_128: TransformerFunction =
-    new NamedTransformerFunction(Seq("murmur3_128", "murmur3_64"), pure = true) {
-      private val hasher = Hashing.murmur3_128()
-      override def eval(args: Array[Any])(implicit ctx: EvaluationContext): Any =
-        hasher.hashString(args(0).toString, StandardCharsets.UTF_8).asLong()
+  // we've had some confusion around the names of these functions - the original function was murmur3_64,
+  // which was then incorrectly renamed to murmur3_128. currently both these functions only return the first 64
+  // bits of a 128 bit hash. the full 128-bit hash is now called murmurHash3 to avoid name conflicts
+  private val murmur3_64 =
+    TransformerFunction.pure("murmur3_128", "murmur3_64") { args =>
+      val hash = args(0) match {
+        case s: String => murmur3_128Hashing.hashBytes(s.getBytes(StandardCharsets.UTF_8))
+        case b: Array[Byte] => murmur3_128Hashing.hashBytes(b)
+        case a => throw new IllegalArgumentException(s"Expected String or byte[] but got: $a")
+      }
+      Long.box(hash.asLong()) // asLong gets only the first 64 bits even though the hash has 128
+    }
+
+  private val murmur3_128 =
+    TransformerFunction.pure("murmurHash3") { args =>
+      args(0) match {
+        case s: String => murmur3_128Hashing.hashBytes(s.getBytes(StandardCharsets.UTF_8)).toString // toString results in hex
+        case b: Array[Byte] => murmur3_128Hashing.hashBytes(b).toString // toString results in hex
+        case a => throw new IllegalArgumentException(s"Expected String or byte[] but got: $a")
+      }
     }
 }

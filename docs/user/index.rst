@@ -10,13 +10,14 @@ User Manual
    download
    install
    getting_started
+   geotools
    architecture
    datastores/index
    cli/index
    convert/index
    geoserver
    spark/index
-   nifi
+   nifi/index
    process
    hbase/index
    accumulo/index
@@ -26,11 +27,10 @@ User Manual
    redis/index
    filesystem/index
    kudu/index
+   postgis/index
    lambda/index
    ds_views
    geojson
-   blobstore
-   native_api
    stream
    upgrade
 

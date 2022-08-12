@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -26,7 +26,7 @@ import org.locationtech.geomesa.memory.cqengine.index.GeoIndexType
 import org.locationtech.geomesa.memory.cqengine.index.param.{BucketIndexParam, GeoIndexParams}
 import org.locationtech.geomesa.memory.cqengine.utils.CQIndexType.CQIndexType
 import org.locationtech.geomesa.memory.cqengine.utils._
-import org.locationtech.geomesa.utils.index.{SimpleFeatureIndex, SpatialIndex}
+import org.locationtech.geomesa.utils.index.SimpleFeatureIndex
 import org.locationtech.jts.geom.Geometry
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 import org.opengis.filter._
@@ -88,9 +88,8 @@ class GeoCQEngine(val sft: SimpleFeatureType,
   override def query(filter: Filter): Iterator[SimpleFeature] = {
     val query = filter.accept(new CQEngineQueryVisitor(sft), null).asInstanceOf[Query[SimpleFeature]]
     val iter = if (dedupe) {
-      val dedupOpt = QueryFactory.deduplicate(DeduplicationStrategy.LOGICAL_ELIMINATION)
-      val queryOptions = QueryFactory.queryOptions(dedupOpt)
-      cqcache.retrieve(query, queryOptions).iterator()
+      val dedupeOpt = QueryFactory.deduplicate(DeduplicationStrategy.LOGICAL_ELIMINATION)
+      cqcache.retrieve(query, QueryFactory.queryOptions(dedupeOpt)).iterator()
     } else {
       cqcache.retrieve(query).iterator()
     }
@@ -99,12 +98,6 @@ class GeoCQEngine(val sft: SimpleFeatureType,
 
   def size(): Int = cqcache.size()
   def clear(): Unit = cqcache.clear()
-
-  @deprecated def add(sf: SimpleFeature): Boolean = cqcache.add(sf)
-  @deprecated def addAll(sfs: util.Collection[SimpleFeature]): Boolean = cqcache.addAll(sfs)
-  @deprecated def remove(sf: SimpleFeature): Boolean = cqcache.remove(sf)
-  @deprecated def getById(id: String): Option[SimpleFeature] = Option(get(id))
-  @deprecated def getReaderForFilter(filter: Filter): Iterator[SimpleFeature] = query(filter)
 
   private def addIndices(): Unit = {
 
@@ -157,29 +150,5 @@ class GeoCQEngine(val sft: SimpleFeatureType,
         cqcache.addIndex(index)
       }
     }
-  }
-}
-
-object GeoCQEngine {
-
-  private val lastIndexUsed : Option[ThreadLocal[SpatialIndex[_ <: SimpleFeature]]] =
-    sys.props.get("GeoCQEngineDebugEnabled").collect {
-      case e if e.toBoolean => new ThreadLocal[SpatialIndex[_ <: SimpleFeature]]
-    }
-
-  def isDebugEnabled(): Boolean = lastIndexUsed.nonEmpty
-
-  def setLastIndexUsed(spatialIndex: SpatialIndex[_ <: SimpleFeature]) = {
-    if (lastIndexUsed.isEmpty) {
-      throw new UnsupportedOperationException("GeoCQEngineDebugEnabled = false, debug mode disabled")
-    }
-    lastIndexUsed.foreach(_.set(spatialIndex))
-  }
-
-  def getLastIndexUsed(): Option[SpatialIndex[_ <: SimpleFeature]] = {
-    if (lastIndexUsed.isEmpty) {
-      throw new UnsupportedOperationException("GeoCQEngineDebugEnabled = false, debug mode disabled")
-    }
-    return lastIndexUsed.map(_.get())
   }
 }

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -64,5 +64,5 @@ class BoundingBoxGeoHashIterator(twoGh: TwoGeoHashBoundingBox) extends Iterator[
     else throw new NoSuchElementException("No more geohashes available in iterator")
   }
 
-  def remove = throw new UnsupportedOperationException("Remove operation not supported")
+  override def remove(): Unit = throw new UnsupportedOperationException("Remove operation not supported")
 }

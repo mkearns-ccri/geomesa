@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,12 +11,15 @@ package org.locationtech.geomesa.fs.storage.common.metadata
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.charset.StandardCharsets
 import java.sql.{Connection, ResultSet, SQLException}
+import java.util.concurrent.ConcurrentHashMap
 
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.commons.dbcp2.{PoolableConnection, PoolingDataSource}
 import org.locationtech.geomesa.fs.storage.api.StorageMetadata.{PartitionMetadata, StorageFile, StorageFileAction}
-import org.locationtech.geomesa.fs.storage.api.{Metadata, PartitionScheme, StorageMetadata}
+import org.locationtech.geomesa.fs.storage.api.{Metadata, PartitionScheme, PartitionSchemeFactory, StorageMetadata}
+import org.locationtech.geomesa.fs.storage.common.metadata.JdbcMetadata.MetadataTable
 import org.locationtech.geomesa.utils.io.WithClose
+import org.locationtech.geomesa.utils.text.StringSerialization
 import org.opengis.feature.simple.SimpleFeatureType
 
 /**
@@ -65,20 +68,33 @@ import org.opengis.feature.simple.SimpleFeatureType
   * @param pool connection pool
   * @param root storage root path
   * @param sft simple feature type
-  * @param encoding encoding
-  * @param scheme partition scheme
-  * @param leafStorage leaf storage
+  * @param meta basic metadata config
   **/
 class JdbcMetadata(
     pool: PoolingDataSource[PoolableConnection],
     root: String,
     val sft: SimpleFeatureType,
-    val encoding: String,
-    val scheme: PartitionScheme,
-    val leafStorage: Boolean
+    meta: Metadata
   ) extends StorageMetadata {
 
   import JdbcMetadata.PartitionsTable
+
+  import scala.collection.JavaConverters._
+
+  override val scheme: PartitionScheme = PartitionSchemeFactory.load(sft, meta.scheme)
+  override val encoding: String = meta.config(Metadata.Encoding)
+  override val leafStorage: Boolean = meta.config(Metadata.LeafStorage).toBoolean
+
+  private val kvs = new ConcurrentHashMap[String, String](meta.config.asJava)
+
+  override def get(key: String): Option[String] = Option(kvs.get(key))
+
+  override def set(key: String, value: String): Unit = {
+    kvs.put(key, value)
+    WithClose(pool.getConnection()) { connection =>
+      MetadataTable.update(connection, root, meta.copy(config = kvs.asScala.toMap))
+    }
+  }
 
   override def getPartition(name: String): Option[PartitionMetadata] =
     WithClose(pool.getConnection())(connection => PartitionsTable.select(connection, root, name))
@@ -92,7 +108,19 @@ class JdbcMetadata(
   override def removePartition(partition: PartitionMetadata): Unit =
     WithClose(pool.getConnection())(connection => PartitionsTable.delete(connection, root, partition))
 
-  override def compact(partition: Option[String], threads: Int): Unit = {
+  override def setPartitions(partitions: Seq[PartitionMetadata]): Unit = {
+    // TODO execute as a transaction
+    WithClose(pool.getConnection()) { connection =>
+      PartitionsTable.clear(connection, root)
+      partitions.foreach(PartitionsTable.insert(connection, root, _))
+    }
+  }
+
+  // noinspection ScalaDeprecation
+  override def compact(partition: Option[String], threads: Int): Unit = compact(partition, None, threads)
+
+  override def compact(partition: Option[String], fileSize: Option[Long], threads: Int): Unit = {
+    // TODO execute as a transaction
     WithClose(pool.getConnection()) { connection =>
       partition match {
         case None =>
@@ -108,7 +136,7 @@ class JdbcMetadata(
     }
   }
 
-  override def reload(): Unit = {}
+  override def invalidate(): Unit = {}
 
   override def close(): Unit = pool.close()
 }
@@ -150,6 +178,8 @@ object JdbcMetadata extends LazyLogging {
 
     private val InsertStatement: String = s"insert into $TableName ($RootCol, $ValueCol) values (?, ?)"
 
+    private val UpdateStatement: String = s"update $TableName set $ValueCol = ? where $RootCol = ?"
+
     private val SelectStatement: String = s"select $ValueCol from $TableName where $RootCol = ?"
 
     def create(connection: Connection): Unit =
@@ -161,6 +191,16 @@ object JdbcMetadata extends LazyLogging {
       WithClose(connection.prepareStatement(InsertStatement)) { statement =>
         statement.setString(1, root)
         statement.setString(2, new String(serialized.toByteArray, StandardCharsets.UTF_8))
+        statement.executeUpdate()
+      }
+    }
+
+    def update(connection: Connection, root: String, metadata: Metadata): Unit = {
+      val serialized = new ByteArrayOutputStream()
+      MetadataSerialization.serialize(serialized, metadata)
+      WithClose(connection.prepareStatement(UpdateStatement)) { statement =>
+        statement.setString(1, new String(serialized.toByteArray, StandardCharsets.UTF_8))
+        statement.setString(2, root)
         statement.executeUpdate()
       }
     }
@@ -227,13 +267,17 @@ object JdbcMetadata extends LazyLogging {
     private val ClearPartitionStatement: String = s"delete from $TableName where $RootCol = ? and $NameCol = ?"
 
     private val BaseSelect: String =
-      s"select $NameCol, $IdCol, $ActionCol, $CountCol, " +
-          s"$BoundsXMinCol, $BoundsYMinCol, $BoundsXMaxCol, $BoundsYMaxCol " +
-          s"from $TableName where $RootCol = ?"
+      s"select $TableName.$NameCol as $NameCol, $TableName.$IdCol as $IdCol, $ActionCol, $CountCol, " +
+          s"$BoundsXMinCol, $BoundsYMinCol, $BoundsXMaxCol, $BoundsYMaxCol, " +
+          s"${FilesTable.FileCol}, ${FilesTable.TypeCol}, ${FilesTable.TimeCol}, " +
+          s"${FilesTable.SortCol}, ${FilesTable.BoundsCol} " +
+          s"from $TableName, ${FilesTable.TableName} where $TableName.$RootCol = ? and " +
+          s"$TableName.$RootCol = ${FilesTable.TableName}.$RootCol " +
+          s"and $TableName.$IdCol = ${FilesTable.TableName}.$IdCol"
 
-    private val SelectStatement: String = s"$BaseSelect and $NameCol = ? order by $IdCol"
+    private val SelectStatement: String = s"$BaseSelect and $TableName.$NameCol = ? order by $IdCol"
 
-    private val SelectPrefixStatement: String = s"$BaseSelect and $NameCol like ? order by $NameCol, $IdCol"
+    private val SelectPrefixStatement: String = s"$BaseSelect and $TableName.$NameCol like ? order by $NameCol, $IdCol"
 
     private val SelectAllStatement: String = s"$BaseSelect order by $NameCol, $IdCol"
 
@@ -269,7 +313,7 @@ object JdbcMetadata extends LazyLogging {
     }
 
     def select(connection: Connection, root: String, prefix: Option[String]): Seq[PartitionMetadata] = {
-      val actions = prefix match {
+      val configs = prefix match {
         case None =>
           WithClose(connection.prepareStatement(SelectAllStatement)) { select =>
             select.setString(1, root)
@@ -283,17 +327,15 @@ object JdbcMetadata extends LazyLogging {
             WithClose(select.executeQuery())(readConfigs)
           }
       }
-      val configs = actions.map(c => c.copy(files = FilesTable.select(connection, root, c.timestamp.toInt)))
       configs.groupBy(_.name).values.flatMap(mergePartitionConfigs).filter(_.files.nonEmpty).map(_.toMetadata).toList
     }
 
     def select(connection: Connection, root: String, name: String): Option[PartitionMetadata] = {
-      val actions = WithClose(connection.prepareStatement(SelectStatement)) { select =>
+      val configs = WithClose(connection.prepareStatement(SelectStatement)) { select =>
         select.setString(1, root)
         select.setString(2, name)
         WithClose(select.executeQuery())(readConfigs)
       }
-      val configs = actions.map(c => c.copy(files = FilesTable.select(connection, root, c.timestamp.toInt)))
       mergePartitionConfigs(configs).map(_.toMetadata)
     }
 
@@ -327,18 +369,61 @@ object JdbcMetadata extends LazyLogging {
     }
 
     private def readConfigs(results: ResultSet): Seq[PartitionConfig] = {
+      if (!results.next()) {
+        return Seq.empty
+      }
+
       val partitions = Seq.newBuilder[PartitionConfig]
+
+      var partition = results.partition()
+      var files = Seq.newBuilder[StorageFile] += results.file()
+
       while (results.next()) {
+        if (results.name() == partition.name && results.id() == partition.timestamp) {
+          files += results.file()
+        } else {
+          partitions += partition.copy(files = files.result)
+          partition = results.partition()
+          files = Seq.newBuilder[StorageFile] += results.file()
+        }
+      }
+
+      partitions += partition.copy(files = files.result)
+      partitions.result
+    }
+
+    implicit class RichSelectResults(val results: ResultSet) extends AnyVal {
+
+      def name(): String = results.getString(1)
+      def id(): Int = results.getInt(2)
+
+      def partition(): PartitionConfig = {
         val action = results.getString(3) match {
           case "a" => PartitionAction.Add
           case "d" => PartitionAction.Remove
+          case a => throw new IllegalStateException(s"Expected an action of 'a' or 'd' but got: $a")
         }
-        val bounds =
-          EnvelopeConfig(results.getDouble(5), results.getDouble(6), results.getDouble(7), results.getDouble(8))
-        partitions +=
-            PartitionConfig(results.getString(1), action, Set.empty, results.getLong(4), bounds, results.getInt(2))
+        val bounds = Seq(results.getDouble(5), results.getDouble(6), results.getDouble(7), results.getDouble(8))
+        PartitionConfig(name(), action, Seq.empty, results.getLong(4), bounds, id())
       }
-      partitions.result
+
+      def file(): StorageFile = {
+        val name = results.getString(9)
+        val action = results.getString(10) match {
+          case "a" => StorageFileAction.Append
+          case "m" => StorageFileAction.Modify
+          case "d" => StorageFileAction.Delete
+          case a => throw new IllegalStateException(s"Expected an action of 'a', 'm', or 'd' but got: $a")
+        }
+        val ts = results.getLong(11)
+        val sort = Option(results.getString(12)).collect {
+          case s if s.nonEmpty => s.split(",").map(_.toInt).toSeq
+        }
+        val bounds = Option(results.getString(13)).map { s =>
+          StringSerialization.decodeSeq(s).grouped(3).toSeq.map { case Seq(i, lo, hi) => (i.toInt, lo, hi) }
+        }
+        StorageFile(name, ts, action, sort.getOrElse(Seq.empty), bounds.getOrElse(Seq.empty))
+      }
     }
   }
 
@@ -349,9 +434,11 @@ object JdbcMetadata extends LazyLogging {
 
     val TableName = "storage_partition_files"
 
-    private val FileCol = "file"
-    private val TypeCol = "typ"
-    private val TimeCol = "ts"
+    private[JdbcMetadata] val FileCol   = "file"
+    private[JdbcMetadata] val TypeCol   = "typ"
+    private[JdbcMetadata] val TimeCol   = "ts"
+    private[JdbcMetadata] val SortCol   = "sort"
+    private[JdbcMetadata] val BoundsCol = "bounds"
 
     private val CreateStatement: String =
       s"create table if not exists $TableName (" +
@@ -361,16 +448,19 @@ object JdbcMetadata extends LazyLogging {
           s"$FileCol varchar(256) not null, " +
           s"$TypeCol char(1) not null, " +
           s"$TimeCol bigint, " +
+          s"$SortCol varchar(256), " +
+          s"$BoundsCol varchar(256), " +
           s"primary key ($RootCol, $NameCol, $IdCol, $FileCol))"
 
     private val InsertStatement: String =
-      s"insert into $TableName ($RootCol, $NameCol, $IdCol, $FileCol, $TypeCol, $TimeCol) values (?, ?, ?, ?, ?, ?)"
+      s"insert into $TableName ($RootCol, $NameCol, $IdCol, $FileCol, $TypeCol, $TimeCol, $SortCol, $BoundsCol) " +
+          s"values (?, ?, ?, ?, ?, ?, ?, ?)"
 
     private val DeleteStatement: String =
       s"delete from $TableName where $RootCol = ? and and $IdCol = ?"
 
     private val SelectStatement: String =
-      s"select $FileCol, $TypeCol, $TimeCol from $TableName where $RootCol = ? and $IdCol = ?"
+      s"select $FileCol, $TypeCol, $TimeCol, $SortCol, $BoundsCol from $TableName where $RootCol = ? and $IdCol = ?"
 
     private val ClearStatement: String = s"delete from $TableName where $RootCol = ?"
 
@@ -384,7 +474,7 @@ object JdbcMetadata extends LazyLogging {
         statement.setString(1, root)
         statement.setString(2, name)
         statement.setInt(3, id)
-        files.foreach { case StorageFile(file, timestamp, action) =>
+        files.foreach { case StorageFile(file, timestamp, action, sort, bounds) =>
           statement.setString(4, file)
           val char = action match {
             case StorageFileAction.Append => "a"
@@ -394,6 +484,9 @@ object JdbcMetadata extends LazyLogging {
           }
           statement.setString(5, char)
           statement.setLong(6, timestamp)
+          statement.setString(7, sort.mkString(","))
+          statement.setString(8,
+            StringSerialization.encodeSeq(bounds.flatMap { case (i, lo, hi) => Seq(i.toString, lo, hi) }))
           statement.executeUpdate()
         }
       }
@@ -407,20 +500,28 @@ object JdbcMetadata extends LazyLogging {
       }
     }
 
-    def select(connection: Connection, root: String, id: Int): Set[StorageFile] = {
-      val files = Set.newBuilder[StorageFile]
+    def select(connection: Connection, root: String, id: Int): Seq[StorageFile] = {
+      val files = Seq.newBuilder[StorageFile]
       WithClose(connection.prepareStatement(SelectStatement)) { select =>
         select.setString(1, root)
         select.setInt(2, id)
         WithClose(select.executeQuery()) { results =>
           while (results.next()) {
+            val name = results.getString(1)
             val action = results.getString(2) match {
               case "a" => StorageFileAction.Append
               case "m" => StorageFileAction.Modify
               case "d" => StorageFileAction.Delete
               case a => throw new IllegalStateException(s"Expected an action of 'a', 'm', or 'd' but got: $a")
             }
-            files += StorageFile(results.getString(1), results.getLong(3), action)
+            val ts = results.getLong(3)
+            val sort = Option(results.getString(4)).collect {
+              case s if s.nonEmpty => s.split(",").map(_.toInt).toSeq
+            }
+            val bounds = Option(results.getString(5)).map { s =>
+              StringSerialization.decodeSeq(s).grouped(3).toSeq.map { case Seq(i, lo, hi) => (i.toInt, lo, hi) }
+            }
+            files += StorageFile(name, ts, action, sort.getOrElse(Seq.empty), bounds.getOrElse(Seq.empty))
           }
         }
       }
@@ -447,14 +548,24 @@ object JdbcMetadata extends LazyLogging {
         val cols = WithClose(statement.executeQuery(s"select * from $TableName limit 1")) { results =>
           results.getMetaData.getColumnCount
         }
-        if (cols == 4) {
+        def addTypeAndTime(): Unit = {
           statement.executeUpdate(s"alter table $TableName add column $TypeCol char(1)")
           statement.executeUpdate(s"alter table $TableName add column $TimeCol bigint")
           statement.executeUpdate(s"update $TableName set $TypeCol = 'a', $TimeCol = 0")
           statement.executeUpdate(s"alter table $TableName alter column $TypeCol char(1) not null")
-        } else if (cols != 6) {
+        }
+        def addSortAndBounds(): Unit = {
+          statement.executeUpdate(s"alter table $TableName add column $SortCol varchar(256)")
+          statement.executeUpdate(s"alter table $TableName add column $BoundsCol varchar(256)")
+        }
+        if (cols == 4) {
+          addTypeAndTime()
+          addSortAndBounds()
+        } else if (cols == 6) {
+          addSortAndBounds()
+        } else if (cols != 8) {
           throw new IllegalStateException(s"Unexpected schema detected for table $TableName: " +
-              s"expected 6 columns, but found $cols")
+              s"expected 8 columns, but found $cols")
         }
       }
     }

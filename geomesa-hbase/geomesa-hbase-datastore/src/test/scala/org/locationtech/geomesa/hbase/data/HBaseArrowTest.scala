@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,36 +11,73 @@ package org.locationtech.geomesa.hbase.data
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 
 import com.typesafe.scalalogging.LazyLogging
+<<<<<<< HEAD
 import org.geotools.data.{DataStoreFinder, Query, Transaction}
 import org.geotools.filter.text.ecql.ECQL
 import org.locationtech.geomesa.arrow.ArrowAllocator
 import org.locationtech.geomesa.arrow.io.SimpleFeatureArrowFileReader
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.hbase.data.HBaseQueryPlan.{CoprocessorPlan, ScanPlan}
+=======
+import org.apache.hadoop.hbase.filter.FilterList
+import org.geotools.data.{DataStoreFinder, Query, Transaction}
+import org.geotools.filter.text.ecql.ECQL
+import org.junit.runner.RunWith
+import org.locationtech.geomesa.arrow.io.SimpleFeatureArrowFileReader
+import org.locationtech.geomesa.features.ScalaSimpleFeature
+import org.locationtech.geomesa.hbase.data.HBaseQueryPlan.{CoprocessorPlan, ScanPlan}
+import org.locationtech.geomesa.hbase.rpc.filter.Z3HBaseFilter
+>>>>>>> main
 import org.locationtech.geomesa.index.conf.QueryHints
 import org.locationtech.geomesa.utils.collection.SelfClosingIterator
 import org.locationtech.geomesa.utils.geotools.{FeatureUtils, SimpleFeatureTypes}
 import org.locationtech.geomesa.utils.io.WithClose
 import org.opengis.filter.Filter
+<<<<<<< HEAD
 import org.specs2.matcher.MatchResult
+=======
+import org.specs2.mutable.Specification
+import org.specs2.runner.JUnitRunner
+>>>>>>> main
 
-class HBaseArrowTest extends HBaseTest with LazyLogging  {
+import scala.collection.JavaConversions._
+
+
+<<<<<<< HEAD
+  lazy val sft = SimpleFeatureTypes.createType("arrow", "name:String,age:Int,dtg:Date,*geom:Point:srid=4326")
+
+=======
+@RunWith(classOf[JUnitRunner])
+class HBaseArrowTest extends Specification with LazyLogging  {
 
   import scala.collection.JavaConverters._
 
   lazy val sft = SimpleFeatureTypes.createType("arrow", "name:String,age:Int,dtg:Date,*geom:Point:srid=4326")
 
+>>>>>>> main
   lazy val features = (0 until 10).map { i =>
     ScalaSimpleFeature.create(sft, s"$i", s"name${i % 2}", s"${i % 5}", s"2017-02-03T00:0$i:01.000Z", s"POINT(40 6$i)")
   }
 
   lazy val params = Map(
+<<<<<<< HEAD
     HBaseDataStoreParams.ConnectionParam.getName   -> connection,
+=======
+    HBaseDataStoreParams.ConnectionParam.getName   -> MiniCluster.connection,
+>>>>>>> main
     HBaseDataStoreParams.HBaseCatalogParam.getName -> HBaseArrowTest.this.getClass.getSimpleName
   )
 
   lazy val ds = DataStoreFinder.getDataStore(params.asJava).asInstanceOf[HBaseDataStore]
+<<<<<<< HEAD
   lazy val dsFullLocal = DataStoreFinder.getDataStore((params ++ Map(HBaseDataStoreParams.RemoteFilteringParam.key -> false)).asJava).asInstanceOf[HBaseDataStore]
+=======
+  lazy val dsSemiLocal = DataStoreFinder.getDataStore((params ++ Map(HBaseDataStoreParams.ArrowCoprocessorParam.key -> false)).asJava).asInstanceOf[HBaseDataStore]
+  lazy val dsFullLocal = DataStoreFinder.getDataStore(params ++ Map(HBaseDataStoreParams.RemoteFilteringParam.key -> false)).asInstanceOf[HBaseDataStore]
+  lazy val dsThreads1 = DataStoreFinder.getDataStore(params ++ Map(HBaseDataStoreParams.CoprocessorThreadsParam.key -> "1")).asInstanceOf[HBaseDataStore]
+  lazy val dsYieldPartials = DataStoreFinder.getDataStore(params ++ Map(HBaseDataStoreParams.YieldPartialResultsParam.key -> true)).asInstanceOf[HBaseDataStore]
+  lazy val dataStores = Seq(ds, dsSemiLocal, dsFullLocal, dsThreads1, dsYieldPartials)
+>>>>>>> main
 
   step {
     logger.info("Starting HBase Arrow Test")
@@ -53,13 +90,23 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
   "HBaseDataStoreFactory" should {
     "enable coprocessors" in {
       ds.config.remoteFilter must beTrue
+<<<<<<< HEAD
+=======
+      ds.config.coprocessors.enabled.arrow must beTrue
+      dsSemiLocal.config.remoteFilter must beTrue
+      dsSemiLocal.config.coprocessors.enabled.arrow must beFalse
+>>>>>>> main
       dsFullLocal.config.remoteFilter must beFalse
     }
   }
 
   "ArrowFileCoprocessor" should {
     "return arrow dictionary encoded data" in {
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         val query = new Query(sft.getTypeName, Filter.INCLUDE)
         query.getHints.put(QueryHints.ARROW_ENCODE, true)
         query.getHints.put(QueryHints.ARROW_DICTIONARY_FIELDS, "name,age")
@@ -68,12 +115,19 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         val out = new ByteArrayOutputStream
         results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
         def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
         WithClose(ArrowAllocator("hbase-file-dict-test")) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
             // sft name gets dropped, so we can't compare directly
             SelfClosingIterator(reader.features()).map(f => (f.getID, f.getAttributes)).toSeq must
                 containTheSameElementsAs(features.map(f => (f.getID, f.getAttributes)))
           }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+          // sft name gets dropped, so we can't compare directly
+          SelfClosingIterator(reader.features()).map(f => (f.getID, f.getAttributes)).toSeq must
+              containTheSameElementsAs(features.map(f => (f.getID, f.getAttributes)))
+>>>>>>> main
         }
       }
     }
@@ -81,7 +135,11 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
 
   "ArrowBatchCoprocessor" should {
     "return arrow encoded data" in {
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         val query = new Query(sft.getTypeName, Filter.INCLUDE)
         query.getHints.put(QueryHints.ARROW_ENCODE, true)
         query.getHints.put(QueryHints.ARROW_BATCH_SIZE, 5)
@@ -89,16 +147,26 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         val out = new ByteArrayOutputStream
         results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
         def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
         WithClose(ArrowAllocator("hbase-batch-test")) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
             SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
                 containTheSameElementsAs(features)
           }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+          SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
+              containTheSameElementsAs(features)
+>>>>>>> main
         }
       }
     }
     "return arrow dictionary encoded data" in {
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         val query = new Query(sft.getTypeName, Filter.INCLUDE)
         query.getHints.put(QueryHints.ARROW_ENCODE, true)
         query.getHints.put(QueryHints.ARROW_DICTIONARY_FIELDS, "name,age")
@@ -107,16 +175,26 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         val out = new ByteArrayOutputStream
         results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
         def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
         WithClose(ArrowAllocator("hbase-batch-dict-test")) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
             SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
                 containTheSameElementsAs(features)
           }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+          SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
+              containTheSameElementsAs(features)
+>>>>>>> main
         }
       }
     }
     "return arrow dictionary encoded data with provided dictionaries" in {
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         val query = new Query(sft.getTypeName, Filter.INCLUDE)
         query.getHints.put(QueryHints.ARROW_ENCODE, true)
         query.getHints.put(QueryHints.ARROW_DICTIONARY_FIELDS, "name")
@@ -126,6 +204,7 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         val out = new ByteArrayOutputStream
         results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
         def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
         WithClose(ArrowAllocator("hbase-batch-provided-dict-test")) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
             val expected = features.map {
@@ -138,11 +217,27 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
             SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
                 containTheSameElementsAs(expected)
           }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+          val expected = features.map {
+            case f if f.getAttribute(0) != "name1" => f
+            case f =>
+              val e = ScalaSimpleFeature.copy(sft, f)
+              e.setAttribute(0, "[other]")
+              e
+          }
+          SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
+              containTheSameElementsAs(expected)
+>>>>>>> main
         }
       }
     }
     "return arrow encoded projections" in {
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         val query = new Query(sft.getTypeName, Filter.INCLUDE, Array("dtg", "geom"))
         query.getHints.put(QueryHints.ARROW_ENCODE, true)
         query.getHints.put(QueryHints.ARROW_BATCH_SIZE, 5)
@@ -150,11 +245,17 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         val out = new ByteArrayOutputStream
         results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
         def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
         WithClose(ArrowAllocator("hbase-batch-project-test")) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
             SelfClosingIterator(reader.features()).map(_.getAttributes.asScala).toSeq must
                 containTheSameElementsAs(features.map(f => List(f.getAttribute("dtg"), f.getAttribute("geom"))))
           }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+          SelfClosingIterator(reader.features()).map(_.getAttributes.asScala).toSeq must
+              containTheSameElementsAs(features.map(f => List(f.getAttribute("dtg"), f.getAttribute("geom"))))
+>>>>>>> main
         }
       }
     }
@@ -167,7 +268,11 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         "bbox(geom,38,65.5,42,69.5) and dtg DURING 2017-02-03T00:00:00.000Z/2017-02-03T00:08:00.000Z" -> features.slice(6, 8)
       )
       val transforms = Seq(Array("name", "dtg", "geom"), null)
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         foreach(filters) { case (ecql, expected) =>
           foreach(transforms) { transform =>
             val query = new Query(sft.getTypeName, ECQL.toFilter(ecql), transform)
@@ -179,6 +284,7 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
             val out = new ByteArrayOutputStream
             results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
             def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
             WithClose(ArrowAllocator("hbase-batch-sort-test")) { allocator =>
               WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
                 if (transform == null) {
@@ -187,6 +293,14 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
                   SelfClosingIterator(reader.features()).map(f => f.getID -> f.getAttributes.asScala).toList mustEqual
                       expected.map(f => f.getID -> transform.map(f.getAttribute).toSeq)
                 }
+=======
+            WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+              if (transform == null) {
+                SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toList mustEqual expected
+              } else {
+                SelfClosingIterator(reader.features()).map(f => f.getID -> f.getAttributes.asScala).toList mustEqual
+                    expected.map(f => f.getID -> transform.map(f.getAttribute).toSeq)
+>>>>>>> main
               }
             }
           }
@@ -194,7 +308,11 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
       }
     }
     "return sampled arrow encoded data" in {
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         val query = new Query(sft.getTypeName, Filter.INCLUDE)
         query.getHints.put(QueryHints.ARROW_ENCODE, true)
         query.getHints.put(QueryHints.SAMPLING, 0.2f)
@@ -203,26 +321,49 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         val out = new ByteArrayOutputStream
         results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
         def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
         WithClose(ArrowAllocator("hbase-batch-sample-test")) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
             val results = SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq
             results.length must beLessThan(10)
             foreach(results)(features must contain(_))
           }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+          val results = SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq
+          results.length must beLessThan(10)
+          foreach(results)(features must contain(_))
+>>>>>>> main
         }
       }
     }
     "return arrow dictionary encoded data without caching and with z-values" in {
       val filter = ECQL.toFilter("bbox(geom, 38, 59, 42, 70) and dtg DURING 2017-02-03T00:00:00.000Z/2017-02-03T01:00:00.000Z")
+<<<<<<< HEAD
       foreachDatastore { ds =>
+=======
+      foreach(dataStores) { ds =>
+>>>>>>> main
         val query = new Query(sft.getTypeName, filter)
         query.getHints.put(QueryHints.ARROW_ENCODE, true)
         query.getHints.put(QueryHints.ARROW_DICTIONARY_FIELDS, "name")
         query.getHints.put(QueryHints.ARROW_DICTIONARY_CACHED, java.lang.Boolean.FALSE)
         query.getHints.put(QueryHints.ARROW_BATCH_SIZE, 5)
         foreach(ds.getQueryPlan(query)) { plan =>
+<<<<<<< HEAD
           if (ds.config.remoteFilter && HBaseDataStoreFactory.RemoteArrowProperty.toBoolean.forall(b => b)) {
             plan must beAnInstanceOf[CoprocessorPlan]
+=======
+          if (ds.config.remoteFilter) {
+            if (ds.config.coprocessors.enabled.arrow) {
+              plan must beAnInstanceOf[CoprocessorPlan]
+            } else {
+              plan must beAnInstanceOf[ScanPlan]
+            }
+            plan.scans.head.scans.head.getFilter must beAnInstanceOf[FilterList]
+            val filters = plan.scans.head.scans.head.getFilter.asInstanceOf[FilterList].getFilters
+            filters.asScala.map(_.getClass) must contain(classOf[Z3HBaseFilter])
+>>>>>>> main
           } else {
             plan must beAnInstanceOf[ScanPlan]
           }
@@ -231,12 +372,54 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
         val out = new ByteArrayOutputStream
         results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
         def in() = new ByteArrayInputStream(out.toByteArray)
+<<<<<<< HEAD
         WithClose(ArrowAllocator("hbase-batch-z-test")) { allocator =>
           WithClose(SimpleFeatureArrowFileReader.streaming(in)(allocator)) { reader =>
             SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
                 containTheSameElementsAs(features.filter(filter.evaluate))
           }
         }
+=======
+        WithClose(SimpleFeatureArrowFileReader.streaming(in)) { reader =>
+          SelfClosingIterator(reader.features()).map(ScalaSimpleFeature.copy).toSeq must
+              containTheSameElementsAs(features.filter(filter.evaluate))
+        }
+      }
+    }
+    "work with partitioned tables and arrow coprocessor disabled" in {
+      val sft = SimpleFeatureTypes.createType("arrow-pds",
+        "name:String,age:Int,dtg:Date,*geom:Point:srid=4326;" +
+          "geomesa.table.partition=time,geomesa.z3.interval=day,geomesa.indices.enabled=z3")
+      ds.createSchema(sft)
+      val features = Seq.tabulate(8) { i =>
+        ScalaSimpleFeature.create(sft, s"$i", s"name${i % 2}", s"${i % 5}", s"2017-02-0${i+1}T00:00:01.000Z", s"POINT(40 6$i)")
+      }
+      WithClose(ds.getFeatureWriterAppend(sft.getTypeName, Transaction.AUTO_COMMIT)) { writer =>
+        features.foreach { f =>
+          FeatureUtils.copyToWriter(writer, f, useProvidedFid = true)
+          writer.write()
+        }
+      }
+      HBaseDataStoreFactory.RemoteArrowProperty.threadLocalValue.set("false")
+      try {
+        val query = new Query(sft.getTypeName, Filter.INCLUDE, Array("name", "dtg", "geom"))
+        query.getHints.put(QueryHints.ARROW_ENCODE, java.lang.Boolean.TRUE)
+        query.getHints.put(QueryHints.ARROW_DICTIONARY_FIELDS, "name")
+        query.getHints.put(QueryHints.ARROW_SORT_FIELD, "dtg")
+        query.getHints.put(QueryHints.ARROW_INCLUDE_FID, java.lang.Boolean.FALSE)
+        val results = SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT))
+        val out = new ByteArrayOutputStream
+        results.foreach(sf => out.write(sf.getAttribute(0).asInstanceOf[Array[Byte]]))
+        def in() = new ByteArrayInputStream(out.toByteArray)
+        WithClose(SimpleFeatureArrowFileReader.caching(in())) { reader =>
+          SelfClosingIterator(reader.features()).map(f => f.getID -> f.getAttributes.asScala).toList mustEqual
+              features.map(f => f.getID -> query.getPropertyNames.map(f.getAttribute).toSeq)
+          // ensure the reduce step worked correctly and there is only 1 logical file
+          reader.vectors must haveLength(1)
+        }
+      } finally {
+        HBaseDataStoreFactory.RemoteArrowProperty.threadLocalValue.remove()
+>>>>>>> main
       }
     }
   }
@@ -251,7 +434,11 @@ class HBaseArrowTest extends HBaseTest with LazyLogging  {
 
   step {
     logger.info("Cleaning up HBase Arrow Test")
+<<<<<<< HEAD
     ds.dispose()
     dsFullLocal.dispose()
+=======
+    dataStores.foreach { _.dispose() }
+>>>>>>> main
   }
 }

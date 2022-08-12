@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -43,7 +43,11 @@ trait StatsScan extends AggregatingScan[StatResult] with LazyLogging {
 
 object StatsScan {
 
+<<<<<<< HEAD
   val BatchSize: SystemProperty = SystemProperty("geomesa.stats.batch.size", "100000")
+=======
+  val BatchSize: SystemProperty = SystemProperty("geomesa.stats.batch.size", "10000")
+>>>>>>> main
 
   val StatsSft: SimpleFeatureType = SimpleFeatureTypes.createType("stats:stats", "stats:String,geom:Geometry")
 
@@ -58,7 +62,8 @@ object StatsScan {
                 hints: Hints): Map[String, String] = {
     import Configuration.STATS_STRING_KEY
     import org.locationtech.geomesa.index.conf.QueryHints.{RichHints, STATS_STRING}
-    AggregatingScan.configure(sft, index, filter, hints.getTransform, hints.getSampling) ++
+    val batchSize = StatsScan.BatchSize.toInt.get // has a valid default so should be safe to .get
+    AggregatingScan.configure(sft, index, filter, hints.getTransform, hints.getSampling, batchSize) ++
       Map(STATS_STRING_KEY -> hints.get(STATS_STRING).asInstanceOf[String])
   }
 

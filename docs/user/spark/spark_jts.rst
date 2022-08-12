@@ -16,7 +16,7 @@ This functionality is located in the ``geomesa-spark/geomesa-spark-jts`` module:
 
     <dependency>
       <groupId>org.locationtech.geomesa</groupId>
-      <artifactId>geomesa-spark-jts_2.11</artifactId>
+      <artifactId>geomesa-spark-jts_2.12</artifactId>
       // version, etc.
     </dependency>
 
@@ -128,10 +128,11 @@ also achievable with the following code:
 GeoTools User-defined Functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Note that there are two GeoTools derived UDFs and those are:
+Note that there are three GeoTools derived UDFs and those are:
 
  * ``st_distanceSpheroid``
  * ``st_lengthSpheroid``
+ * ``st_transform``
 
 These are available in the geomesa-spark-sql jar, but also bundled by default in the spark-runtime.
 Example usage is as follows:

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -25,6 +25,8 @@ class IdIndex protected (ds: GeoMesaDataStore[_], sft: SimpleFeatureType, versio
   override val keySpace: IdIndexKeySpace = new IdIndexKeySpace(sft)
 
   override val tieredKeySpace: Option[IndexKeySpace[_, _]] = None
+
+  override def toString: String = getClass.getSimpleName
 }
 
 object IdIndex extends ConfiguredIndex {

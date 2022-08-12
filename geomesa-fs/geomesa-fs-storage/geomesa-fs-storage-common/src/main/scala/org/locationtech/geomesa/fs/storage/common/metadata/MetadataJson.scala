@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -31,7 +31,7 @@ import scala.util.control.NonFatal
   */
 object MetadataJson extends MethodProfiling {
 
-  private val MetadataPath = "metadata.json"
+  val MetadataPath = "metadata.json"
 
   private val cache = new ConcurrentHashMap[String, NamedOptions]()
 
@@ -53,7 +53,7 @@ object MetadataJson extends MethodProfiling {
       if (PathCache.exists(context.fc, file)) {
         val config = profile("Loaded metadata configuration") {
           WithClose(new InputStreamReader(context.fc.open(file), StandardCharsets.UTF_8)) { in =>
-            ConfigFactory.parseReader(in, ParseOptions)
+            ConfigFactory.load(ConfigFactory.parseReader(in, ParseOptions)) // call load to resolve sys props
           }
         }
         if (config.hasPath("name")) {
@@ -88,14 +88,23 @@ object MetadataJson extends MethodProfiling {
     val data = profile("Serialized metadata configuration") {
       ConfigWriter[NamedOptions].to(metadata).render(RenderOptions)
     }
+    // remove quotes around substitutions so that they resolve properly
+    // this logic relies on the fact that all strings will be quoted, and just puts another quote on
+    // either side of the expression (typesafe will concatenate them), i.e. "foo ${bar}" -> "foo "${bar}""
+    val interpolated = data.replaceAll("\\$\\{[a-zA-Z0-9_.]+}", "\"$0\"")
     profile("Persisted metadata configuration") {
       WithClose(context.fc.create(file, java.util.EnumSet.of(CreateFlag.CREATE), CreateOpts.createParent)) { out =>
-        out.write(data.getBytes(StandardCharsets.UTF_8))
+        out.write(interpolated.getBytes(StandardCharsets.UTF_8))
         out.hflush()
         out.hsync()
       }
     }
-    cache.put(context.root.toUri.toString, metadata)
+    val toCache = if (data == interpolated) { metadata } else {
+      // reload through ConfigFactory to resolve substitutions
+      pureconfig.loadConfigOrThrow[NamedOptions](
+        ConfigFactory.load(ConfigFactory.parseString(interpolated, ParseOptions)))
+    }
+    cache.put(context.root.toUri.toString, toCache)
     PathCache.register(context.fc, file)
   }
 
@@ -122,7 +131,8 @@ object MetadataJson extends MethodProfiling {
       val meta = Metadata(sft, encoding, scheme, leafStorage)
       val partitionConfig = config.getConfig("partitions")
 
-      WithClose(new FileBasedMetadataFactory().create(context, Map.empty, meta)) { metadata =>
+      val defaults = FileBasedMetadata.LegacyOptions
+      WithClose(new FileBasedMetadataFactory().create(context, defaults.options, meta)) { metadata =>
         partitionConfig.root().entrySet().asScala.foreach { e =>
           val name = e.getKey
           val files = partitionConfig.getStringList(name).asScala.map(StorageFile(_, 0L))
@@ -130,7 +140,7 @@ object MetadataJson extends MethodProfiling {
         }
       }
 
-      Some(FileBasedMetadata.DefaultOptions)
+      Some(defaults)
     } catch {
       case NonFatal(e) => logger.warn("Error transitioning old metadata format: ", e); None
     }

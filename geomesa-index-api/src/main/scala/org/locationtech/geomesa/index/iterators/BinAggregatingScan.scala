@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -43,15 +43,18 @@ trait BinAggregatingScan extends AggregatingScan[ResultCallback] {
     val binSize = if (label.isEmpty) { 16 } else { 24 }
     val sort = options(SortOpt).toBoolean
 
-    val batchSize = options(BatchSizeOpt).toInt * binSize
-
-    val buffer = ByteBuffer.wrap(Array.ofDim(batchSize)).order(ByteOrder.LITTLE_ENDIAN)
+    val buffer = ByteBuffer.wrap(Array.ofDim(batchSize * binSize)).order(ByteOrder.LITTLE_ENDIAN)
     val overflow = ByteBuffer.wrap(Array.ofDim(binSize * 16)).order(ByteOrder.LITTLE_ENDIAN)
 
     new ResultCallback(buffer, overflow, encoder, binSize, sort)
   }
 
+<<<<<<< HEAD
   override protected def defaultBatchSize: Int = throw new IllegalStateException("Batch size configured per scan")
+=======
+  override protected def defaultBatchSize: Int =
+    throw new IllegalArgumentException("Batch scan is specified per scan")
+>>>>>>> main
 }
 
 object BinAggregatingScan {
@@ -59,15 +62,17 @@ object BinAggregatingScan {
   import org.locationtech.geomesa.index.conf.QueryHints.RichHints
   import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleFeatureType
 
+  // configuration keys
   object Configuration {
-    // configuration keys
-    val BatchSizeOpt  = "batch"
     val SortOpt       = "sort"
     val TrackOpt      = "track"
     val GeomOpt       = "geom"
     val DateOpt       = "dtg"
     val LabelOpt      = "label"
     val DateArrayOpt  = "dtg-array"
+
+    @deprecated("AggregatingScan.Configuration.BatchSizeOpt")
+    val BatchSizeOpt = "batch"
   }
 
   def configure(sft: SimpleFeatureType,
@@ -93,9 +98,8 @@ object BinAggregatingScan {
         None
       }
 
-    val base = AggregatingScan.configure(sft, index, filter, None, sampling) // note: don't pass transforms
+    val base = AggregatingScan.configure(sft, index, filter, None, sampling, batchSize) // note: don't pass transforms
     base ++ AggregatingScan.optionalMap(
-      BatchSizeOpt -> batchSize.toString,
       TrackOpt     -> sft.indexOf(trackId).toString,
       GeomOpt      -> sft.indexOf(geom).toString,
       DateOpt      -> dtg.map(sft.indexOf).getOrElse(-1).toString,

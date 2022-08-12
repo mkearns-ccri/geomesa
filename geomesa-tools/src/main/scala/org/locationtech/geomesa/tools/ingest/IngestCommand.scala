@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -16,18 +16,26 @@ import com.beust.jcommander.{Parameter, ParameterException}
 import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions, ConfigValueFactory}
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.commons.io.{FilenameUtils, IOUtils}
-import org.geotools.data.{DataStore, DataUtilities}
+import org.apache.hadoop.mapreduce.Job
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat
+import org.geotools.data.{DataStore, DataStoreFinder, DataUtilities}
 import org.locationtech.geomesa.convert.ConverterConfigLoader
 import org.locationtech.geomesa.convert.all.TypeAwareInference
 import org.locationtech.geomesa.convert2.SimpleFeatureConverter
+import org.locationtech.geomesa.jobs.Awaitable
+import org.locationtech.geomesa.jobs.JobResult.{JobFailure, JobSuccess}
+import org.locationtech.geomesa.jobs.mapreduce.ConverterCombineInputFormat
+import org.locationtech.geomesa.tools.Command.CommandException
 import org.locationtech.geomesa.tools.DistributedRunParam.RunModes
 import org.locationtech.geomesa.tools.DistributedRunParam.RunModes.RunMode
 import org.locationtech.geomesa.tools._
-import org.locationtech.geomesa.tools.ingest.IngestCommand.IngestParams
-import org.locationtech.geomesa.tools.utils.{CLArgResolver, Prompt}
+import org.locationtech.geomesa.tools.data.CreateSchemaCommand.SchemaOptionsCommand
+import org.locationtech.geomesa.tools.ingest.IngestCommand.{IngestCounters, IngestParams, Inputs}
+import org.locationtech.geomesa.tools.utils.{CLArgResolver, Prompt, TerminalCallback}
 import org.locationtech.geomesa.utils.collection.CloseableIterator
 import org.locationtech.geomesa.utils.conf.GeoMesaSystemProperties.SystemProperty
 import org.locationtech.geomesa.utils.geotools.{ConfigSftParsing, SimpleFeatureTypes}
+import org.locationtech.geomesa.utils.io.fs.FileSystemDelegate.FileHandle
 import org.locationtech.geomesa.utils.io.fs.LocalDelegate.StdInHandle
 import org.locationtech.geomesa.utils.io.{CloseWithLogging, PathUtils, WithClose}
 import org.locationtech.geomesa.utils.text.TextTools
@@ -37,7 +45,8 @@ import scala.collection.mutable.ListBuffer
 import scala.util.control.NonFatal
 import scala.util.{Success, Try}
 
-trait IngestCommand[DS <: DataStore] extends DataStoreCommand[DS] with DistributedCommand with InteractiveCommand {
+trait IngestCommand[DS <: DataStore]
+    extends DataStoreCommand[DS] with DistributedCommand with InteractiveCommand with SchemaOptionsCommand {
 
   import scala.collection.JavaConverters._
 
@@ -48,29 +57,21 @@ trait IngestCommand[DS <: DataStore] extends DataStoreCommand[DS] with Distribut
 
   override def execute(): Unit = {
     if (params.files.isEmpty && !StdInHandle.isAvailable) {
-      throw new ParameterException("Missing option: <files>... is required")
+      throw new ParameterException("Missing option: <files>... is required, or use `-` to ingest from standard in")
     }
 
-    val inputs = if (params.srcList) {
-      val lists = if (params.files.isEmpty) { StdInHandle.available().toList } else {
-        params.files.asScala.flatMap(PathUtils.interpretPath).toList
-      }
-      lists.flatMap { file =>
-        WithClose(file.open) { iter =>
-          iter.flatMap { case (_, is) => IOUtils.lineIterator(is, StandardCharsets.UTF_8).asScala }.toList
-        }
-      }
-    } else {
-      params.files.asScala
+    val inputs: Inputs = {
+      val files = Inputs(params.files.asScala)
+      if (params.srcList) { files.asSourceList } else { files }
     }
 
-    val format = IngestCommand.getDataFormat(params, inputs)
-    val remote = inputs.exists(PathUtils.isRemote)
+    val format = IngestCommand.getDataFormat(params, inputs.paths)
+    val remote = inputs.paths.exists(PathUtils.isRemote)
 
     if (remote) {
       // If we have a remote file, make sure they are all the same FS
-      val prefix = inputs.head.split("/")(0).toLowerCase
-      if (!inputs.drop(1).forall(_.toLowerCase.startsWith(prefix))) {
+      val prefix = inputs.paths.head.split("/")(0).toLowerCase
+      if (!inputs.paths.drop(1).forall(_.toLowerCase.startsWith(prefix))) {
         throw new ParameterException(s"Files must all be on the same file system: ($prefix) or all be local")
       }
     }
@@ -102,23 +103,82 @@ trait IngestCommand[DS <: DataStore] extends DataStoreCommand[DS] with Distribut
     }
 
     // use .get to re-throw the exception if we fail
-    IngestCommand.getSftAndConverter(params, inputs, format, Some(this)).get.foreach {
-      case (sft, converter) => createIngest(mode, sft, converter, inputs).run()
+    IngestCommand.getSftAndConverter(params, inputs.paths, format, Some(this)).get.foreach { case (sft, converter) =>
+      val start = System.currentTimeMillis()
+      // create schema for the feature prior to ingest
+      val ds = DataStoreFinder.getDataStore(connection.asJava).asInstanceOf[DS]
+      if (ds == null) {
+        throw new ParameterException("Could not create data store from parameters")
+      }
+      try {
+        val existing = Try(ds.getSchema(sft.getTypeName)).getOrElse(null)
+        if (existing == null) {
+          Command.user.info(s"Creating schema '${sft.getTypeName}'")
+          setBackendSpecificOptions(sft)
+          ds.createSchema(sft)
+        } else {
+          Command.user.info(s"Schema '${sft.getTypeName}' exists")
+          if (DataUtilities.compare(sft, existing) != 0) {
+            throw new ParameterException("Existing simple feature type does not match expected type" +
+                s"\n  existing: '${SimpleFeatureTypes.encodeType(existing)}'" +
+                s"\n  expected: '${SimpleFeatureTypes.encodeType(sft)}'")
+          }
+        }
+        val result = startIngest(mode, ds, sft, converter, inputs)
+        if (params.waitForCompletion) {
+          result.await(TerminalCallback()) match {
+            case JobSuccess(message, counts) =>
+              Command.user.info(s"Ingestion complete in ${TextTools.getTime(start)}")
+              val count = counts.getOrElse(IngestCounters.Persisted, counts.getOrElse(IngestCounters.Ingested, 0L))
+              val failed = counts.getOrElse(IngestCounters.Failed, 0L)
+              Command.user.info(IngestCommand.getStatInfo(count, failed, input = message))
+
+            case JobFailure(message) =>
+              Command.user.error(s"Ingestion failed in ${TextTools.getTime(start)}")
+              // propagate out and return an exit code error
+              throw new CommandException(message)
+          }
+        } else {
+          Command.user.info("Job submitted, check tracking for progress and result")
+        }
+      } finally {
+        CloseWithLogging(ds)
+      }
     }
   }
 
-  protected def createIngest(mode: RunMode, sft: SimpleFeatureType, converter: Config, inputs: Seq[String]): Runnable = {
+  /**
+   * Start the ingestion asynchronously, returning an object for reporting status
+   *
+   * @param mode run mode
+   * @param ds data store
+   * @param sft simple feature type
+   * @param converter converter config
+   * @param inputs input files
+   * @return
+   */
+  protected def startIngest(
+      mode: RunMode,
+      ds: DS,
+      sft: SimpleFeatureType,
+      converter: Config,
+      inputs: Inputs): Awaitable = {
     mode match {
       case RunModes.Local =>
-        new LocalConverterIngest(connection, sft, converter, inputs, params.threads)
-
-      case RunModes.Distributed if params.combineInputs =>
-        new DistributedCombineConverterIngest(connection, sft, converter, inputs, libjarsFiles, libjarsPaths,
-          Option(params.maxSplitSize), params.waitForCompletion)
+        Command.user.info("Running ingestion in local mode")
+        new LocalConverterIngest(ds, connection.asJava, sft, converter, inputs, params.threads)
 
       case RunModes.Distributed =>
-        new DistributedConverterIngest(connection, sft, converter, inputs, libjarsFiles, libjarsPaths,
-          params.waitForCompletion)
+        Command.user.info(s"Running ingestion in distributed ${if (params.combineInputs) "combine " else "" }mode")
+        new ConverterIngestJob(connection, sft, converter, inputs.paths, libjarsFiles, libjarsPaths) {
+          override def configureJob(job: Job): Unit = {
+            super.configureJob(job)
+            if (params.combineInputs) {
+              job.setInputFormatClass(classOf[ConverterCombineInputFormat])
+              Option(params.maxSplitSize).foreach(s => FileInputFormat.setMaxInputSplitSize(job, s.toLong))
+            }
+          }
+        }
 
       case _ =>
         throw new NotImplementedError(s"Missing implementation for mode $mode")
@@ -128,7 +188,7 @@ trait IngestCommand[DS <: DataStore] extends DataStoreCommand[DS] with Distribut
 
 object IngestCommand extends LazyLogging {
 
-  val LocalBatchSize = SystemProperty("geomesa.ingest.local.batch.size", "20000")
+  val LocalBatchSize: SystemProperty = SystemProperty("geomesa.ingest.local.batch.size", "20000")
 
   // @Parameters(commandDescription = "Ingest/convert various file formats into GeoMesa")
   trait IngestParams extends OptionalTypeNameParam with OptionalFeatureSpecParam with OptionalForceParam
@@ -276,7 +336,54 @@ object IngestCommand extends LazyLogging {
     } else {
       s"and failed to ingest ${TextTools.getPlural(failures, "feature")}"
     }
-    s"$action ${TextTools.getPlural(successes, "feature")} $failureString$input"
+    s"$action ${TextTools.getPlural(successes, "feature")} $failureString${TextTools.prefixSpace(input)}"
+  }
+
+  object IngestCounters {
+    val Ingested  = "ingested"
+    val Failed    = "failed"
+    val Persisted = "persisted"
+  }
+
+  /**
+   * Command inputs
+   *
+   * @param paths paths to files for ingest
+   */
+  case class Inputs(paths: Seq[String]) {
+
+    import Inputs.StdInInputs
+
+    import scala.collection.JavaConverters.asScalaIteratorConverter
+
+    val stdin: Boolean = paths.isEmpty || paths == StdInInputs
+
+    /**
+     * Interprets the input paths into actual files, handling wildcards, etc
+     */
+    lazy val handles: List[FileHandle] = paths match {
+      case Nil         => StdInHandle.available().toList
+      case StdInInputs => List(new StdInHandle())
+      case _           => paths.flatMap(PathUtils.interpretPath).toList
+    }
+
+    /**
+     * Interprets the paths as lists of source file names (instead of the files to ingest)
+     *
+     * @return the actual inputs to ingest
+     */
+    def asSourceList: Inputs = {
+      val paths = handles.flatMap { file =>
+        WithClose(file.open) { iter =>
+          iter.flatMap { case (_, is) => IOUtils.lineIterator(is, StandardCharsets.UTF_8).asScala }.toList
+        }
+      }
+      Inputs(paths)
+    }
+  }
+
+  object Inputs {
+    val StdInInputs = Seq("-")
   }
 
   /**

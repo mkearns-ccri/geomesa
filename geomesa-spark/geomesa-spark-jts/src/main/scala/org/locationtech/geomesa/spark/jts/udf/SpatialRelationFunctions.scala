@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -56,6 +56,10 @@ object SpatialRelationFunctions {
   val ST_LengthSphere: LineString => jl.Double =
     nullableUDF(line => line.getCoordinates.sliding(2).map { case Array(l, r) => fastDistance(l, r) }.sum)
 
+  val ST_Intersection: (Geometry, Geometry) => Geometry = nullableUDF((geom1, geom2) => geom1.intersection(geom2))
+
+  val ST_Difference: (Geometry, Geometry) => Geometry = nullableUDF((geom1, geom2) => geom1.difference(geom2))
+
   private[geomesa] val relationNames = Map(
     ST_Translate -> "st_translate" ,
     ST_Contains -> "st_contains",
@@ -76,7 +80,9 @@ object SpatialRelationFunctions {
     ST_DistanceSphere -> "st_distanceSphere",
     ST_Length -> "st_length",
     ST_AggregateDistanceSphere -> "st_aggregateDistanceSphere",
-    ST_LengthSphere -> "st_lengthSphere"
+    ST_LengthSphere -> "st_lengthSphere",
+    ST_Intersection -> "st_intersection",
+    ST_Difference -> "st_difference"
   )
 
   // Geometry Processing
@@ -113,6 +119,8 @@ object SpatialRelationFunctions {
 
     // Register geometry Processing
     sqlContext.udf.register("st_convexhull", ch)
+    sqlContext.udf.register(relationNames(ST_Intersection),ST_Intersection)
+    sqlContext.udf.register(relationNames(ST_Difference),ST_Difference)
   }
 
   @transient private lazy val spatialContext = JtsSpatialContext.GEO

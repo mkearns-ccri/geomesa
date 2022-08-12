@@ -1,6 +1,11 @@
 GeoMesa Stream Processing
 =========================
 
+.. warning::
+
+   The GeoMesa Stream library is deprecated and will be removed in a future version.
+
+
 The GeoMesa Stream library (``geomesa-stream`` in the source distribution)
 provides tools to process streams of
 ``SimpleFeatures``. The library can be used to instantiate a
@@ -29,7 +34,7 @@ Installing into GeoServer
 
 -   Clone GeoMesa from the source distribution found on `GitHub <https://github.com/locationtech/geomesa>`_.
 -   Use Maven to build the source distribution.
--   Copy ``geomesa-stream-gs-plugin_2.11-$VERSION-install.tar.gz`` from ``geomesa-stream/geomesa-stream-gs-plugin/target`` to GeoServer's ``/webapps/geoserver/WEB-INF/lib/ directory`` and untar it.
+-   Copy ``geomesa-stream-gs-plugin_${VERSION}-install.tar.gz`` from ``geomesa-stream/geomesa-stream-gs-plugin/target`` to GeoServer's ``/webapps/geoserver/WEB-INF/lib/ directory`` and untar it.
 -   In GeoServer, navigate to ``Stores`` under ``Data`` and click ``Add new Store``.
 -   ``SimpleFeature Stream Source`` should be visible under  ``Vector Data Sources``.
 

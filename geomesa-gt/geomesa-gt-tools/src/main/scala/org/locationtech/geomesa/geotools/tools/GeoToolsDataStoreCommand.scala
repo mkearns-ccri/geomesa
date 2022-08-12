@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -64,7 +64,7 @@ object GeoToolsDataStoreCommand {
       description = "Parameter for DataStoreFinder to load the data store, in the form key=value",
       variableArity = true,
       converter = classOf[KeyValueConverter])
-    val params: java.util.List[(String, String)] = new java.util.ArrayList()
+    var params: java.util.List[(String, String)] = new java.util.ArrayList()
 
     @Parameter(
       names = Array("--params"),

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -9,20 +9,18 @@
 package org.locationtech.geomesa.lambda.data
 
 import java.time.Clock
+import java.util.{Collections, Properties}
 
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine}
 import com.typesafe.scalalogging.LazyLogging
-import kafka.admin.AdminUtils
-import org.apache.kafka.clients.producer.Producer
+import org.apache.kafka.clients.admin.{AdminClient, NewTopic}
 import org.geotools.data._
 import org.geotools.data.simple.{SimpleFeatureReader, SimpleFeatureSource, SimpleFeatureWriter}
 import org.geotools.feature.FeatureTypes
-import org.locationtech.geomesa.accumulo.data.AccumuloDataStore
-import org.locationtech.geomesa.index.geotools.{GeoMesaFeatureReader, GeoMesaFeatureStore}
+import org.locationtech.geomesa.index.geotools.{GeoMesaDataStore, GeoMesaFeatureReader, GeoMesaFeatureStore}
 import org.locationtech.geomesa.index.stats.{GeoMesaStats, HasGeoMesaStats, NoopStats}
-import org.locationtech.geomesa.kafka.AdminUtilsVersions
 import org.locationtech.geomesa.lambda.data.LambdaDataStore.LambdaConfig
-import org.locationtech.geomesa.lambda.data.LambdaFeatureWriter.{AppendLambdaFeatureWriter, ModifyLambdaFeatureWriter}
+import org.locationtech.geomesa.lambda.data.LambdaFeatureWriter.{AppendLambdaFeatureWriter, ModifyLambdaFeatureWriter, RequiredVisibilityWriter}
 import org.locationtech.geomesa.lambda.stream.kafka.KafkaStore
 import org.locationtech.geomesa.lambda.stream.{OffsetManager, TransientStore}
 import org.locationtech.geomesa.security.AuthorizationsProvider
@@ -36,32 +34,32 @@ import org.opengis.filter.Filter
 
 import scala.concurrent.duration.Duration
 
-class LambdaDataStore(val persistence: DataStore,
-                      producer: Producer[Array[Byte], Array[Byte]],
-                      consumerConfig: Map[String, String],
-                      offsetManager: OffsetManager,
-                      config: LambdaConfig)
-                     (implicit clock: Clock = Clock.systemUTC())
+class LambdaDataStore(val persistence: DataStore, config: LambdaConfig)(implicit clock: Clock = Clock.systemUTC())
     extends DataStore with HasGeoMesaStats with LazyLogging {
 
+  import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleFeatureType
+
+  import scala.collection.JavaConverters._
+
   private val authProvider: Option[AuthorizationsProvider] = persistence match {
-    case ds: AccumuloDataStore => Some(ds.config.authProvider)
+    // this is a bit of a hack to work around hbase null vs empty auths
+    case ds: GeoMesaDataStore[_] if ds.config.authProvider.getAuthorizations != null => Some(ds.config.authProvider)
     case _ => None
   }
 
-  private [lambda] val transients = Caffeine.newBuilder().build(new CacheLoader[String, TransientStore] {
-    override def load(key: String): TransientStore = {
-      val sft = persistence.getSchema(key)
-      new KafkaStore(persistence, sft, authProvider, offsetManager, producer, consumerConfig, config)
+  private [lambda] val transients = Caffeine.newBuilder().build[String, TransientStore](
+    new CacheLoader[String, TransientStore] {
+      override def load(key: String): TransientStore =
+        new KafkaStore(persistence, persistence.getSchema(key), authProvider, config)
     }
-  })
+  )
 
   override val stats: GeoMesaStats = persistence match {
     case p: HasGeoMesaStats => new LambdaStats(p.stats, transients)
     case _ => NoopStats
   }
 
-  private val runner = new LambdaQueryRunner(persistence, transients, stats)
+  private val runner = new LambdaQueryRunner(this, persistence, transients)
 
   def persist(typeName: String): Unit = transients.get(typeName).persist()
 
@@ -74,12 +72,16 @@ class LambdaDataStore(val persistence: DataStore,
     // TODO for some reason lambda qs consumers don't rebalance when the topic is created after the consumers...
     // transients.get(sft.getTypeName).createSchema()
     val topic = KafkaStore.topic(config.zkNamespace, sft)
-    KafkaStore.withZk(config.zookeepers) { zk =>
-      if (AdminUtils.topicExists(zk, topic)) {
+    val props = new Properties()
+    config.producerConfig.foreach { case (k, v) => props.put(k, v) }
+
+    WithClose(AdminClient.create(props)) { admin =>
+      if (admin.listTopics().names().get.contains(topic)) {
         logger.warn(s"Topic [$topic] already exists - it may contain stale data")
       } else {
         val replication = SystemProperty("geomesa.kafka.replication").option.map(_.toInt).getOrElse(1)
-        AdminUtilsVersions.createTopic(zk, topic, config.partitions, replication)
+        val newTopic = new NewTopic(topic, config.partitions, replication.toShort)
+        admin.createTopics(Collections.singletonList(newTopic)).all().get
       }
     }
   }
@@ -137,8 +139,14 @@ class LambdaDataStore(val persistence: DataStore,
   override def getFeatureReader(query: Query, transaction: Transaction): SimpleFeatureReader =
     GeoMesaFeatureReader(getSchema(query.getTypeName), query, runner, None, None)
 
-  override def getFeatureWriterAppend(typeName: String, transaction: Transaction): SimpleFeatureWriter =
-    new AppendLambdaFeatureWriter(transients.get(typeName))
+  override def getFeatureWriterAppend(typeName: String, transaction: Transaction): SimpleFeatureWriter = {
+    val transient = transients.get(typeName)
+    if (transient.sft.isVisibilityRequired) {
+      new AppendLambdaFeatureWriter(transient) with RequiredVisibilityWriter
+    } else {
+      new AppendLambdaFeatureWriter(transient)
+    }
+  }
 
   override def getFeatureWriter(typeName: String, transaction: Transaction): SimpleFeatureWriter =
     getFeatureWriter(typeName, Filter.INCLUDE, transaction)
@@ -148,15 +156,18 @@ class LambdaDataStore(val persistence: DataStore,
                                 transaction: Transaction): SimpleFeatureWriter= {
     val query = new Query(typeName, filter)
     val features = SelfClosingIterator(getFeatureReader(query, transaction))
-    new ModifyLambdaFeatureWriter(transients.get(typeName), features)
+    val transient = transients.get(typeName)
+    if (transient.sft.isVisibilityRequired) {
+      new ModifyLambdaFeatureWriter(transient, features) with RequiredVisibilityWriter
+    } else {
+      new ModifyLambdaFeatureWriter(transient, features)
+    }
   }
 
   override def dispose(): Unit = {
-    import scala.collection.JavaConversions._
-    transients.asMap().values().foreach(CloseWithLogging.apply)
+    CloseWithLogging(transients.asMap.asScala.values)
     transients.invalidateAll()
-    CloseWithLogging(offsetManager)
-    CloseWithLogging(producer)
+    CloseWithLogging(config.offsetManager)
     persistence.dispose()
   }
 
@@ -171,11 +182,15 @@ class LambdaDataStore(val persistence: DataStore,
 }
 
 object LambdaDataStore {
-  case class LambdaConfig(zookeepers: String,
-                          zkNamespace: String,
-                          partitions: Int,
-                          consumers: Int,
-                          expiry: Duration,
-                          visibility: Option[String],
-                          persist: Boolean)
+  case class LambdaConfig(
+      zookeepers: String,
+      zkNamespace: String,
+      producerConfig: Map[String, String],
+      consumerConfig: Map[String, String],
+      partitions: Int,
+      consumers: Int,
+      expiry: Duration,
+      persist: Boolean,
+      offsetManager: OffsetManager
+    )
 }

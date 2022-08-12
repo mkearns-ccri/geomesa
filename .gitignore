@@ -23,3 +23,9 @@ geomesa-*.*.*-*
 *.ipynb
 *.sc
 .sphinx
+.bloop/*
+.metals/*
+.scalafmt.conf
+.vscode/settings.json
+venv/**
+metastore_db/**

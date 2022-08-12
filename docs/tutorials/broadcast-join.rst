@@ -55,11 +55,16 @@ To start working with Spark, we will need a Spark Session initialized, and to ap
 Types (UDTs) and User Defined Functions (UDFs) to our data in Spark, we will need to initialize our SparkSQL extensions.
 This functionality requires having the appropriate GeoMesa Spark runtime jar on the classpath when running your Spark job.
 GeoMesa provides Spark runtime jars for Accumulo, HBase, and FileSystem data stores. For example, the following would start an
-interactive Spark REPL with all dependencies needed for running Spark with GeoMesa version 2.0.0 on an Accumulo data store.
+interactive Spark REPL with all dependencies needed for running Spark with GeoMesa on an Accumulo data store. Replace
+``${VERSION}`` with the appropriate Scala plus GeoMesa versions (e.g. |scala_release_version|):
 
 .. code-block:: bash
 
-    $ bin/spark-shell --jars geomesa-accumulo-spark-runtime_2.11-2.0.0.jar
+    $ bin/spark-shell --jars geomesa-accumulo-spark-runtime-accumulo2_${VERSION}.jar
+
+.. note::
+
+  See :ref:`spatial_rdd_providers` for details on choosing the correct GeoMesa Spark runtime JAR.
 
 To configure the Spark Session such that we can serialize Simple Features and work with geometric UDTs and UDFs, we must
 alter the Spark Session as follows.
@@ -280,14 +285,14 @@ Afterwards, this simple HTML will load a Leaflet map with the data.
 .. code-block:: html
 
     <html>
-	<meta charset="utf-8"/>
-	<link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.css" />
-	<script src="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.js"></script>
-	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-	<script src="theAboveJavascriptFile.js"></script>
-	<body>
-		<div id="map" style="height: 100%"></div>
-	</body>
+      <meta charset="utf-8"/>
+      <link rel="stylesheet" href="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.css" />
+      <script src="http://cdn.leafletjs.com/leaflet/v0.7.7/leaflet.js"></script>
+      <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+      <script src="theAboveJavascriptFile.js"></script>
+      <body>
+        <div id="map" style="height: 100%"></div>
+      </body>
     </html>
 
 The end result will look something like this:

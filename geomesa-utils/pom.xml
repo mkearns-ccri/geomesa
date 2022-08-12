@@ -3,12 +3,17 @@
 
     <parent>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <artifactId>geomesa_2.11</artifactId>
         <version>2.4.3-SNAPSHOT</version>
+=======
+        <artifactId>geomesa_2.12</artifactId>
+        <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>geomesa-utils_2.11</artifactId>
+    <artifactId>geomesa-utils_2.12</artifactId>
     <name>GeoMesa Utils</name>
 
     <properties>
@@ -77,8 +82,12 @@
             <artifactId>gt-shapefile</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.googlecode.efficient-java-matrix-library</groupId>
-            <artifactId>core</artifactId>
+            <groupId>org.ejml</groupId>
+            <artifactId>ejml-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.ejml</groupId>
+            <artifactId>ejml-simple</artifactId>
         </dependency>
         <dependency>
             <groupId>org.locationtech.spatial4j</groupId>
@@ -87,10 +96,6 @@
         <dependency>
             <groupId>com.typesafe</groupId>
             <artifactId>config</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
         </dependency>
         <dependency>
             <groupId>com.esotericsoftware</groupId>
@@ -113,6 +118,13 @@
             <artifactId>caffeine</artifactId>
         </dependency>
         <dependency>
+<<<<<<< HEAD
+=======
+            <groupId>org.ehcache</groupId>
+            <artifactId>sizeof</artifactId>
+        </dependency>
+        <dependency>
+>>>>>>> main
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
         </dependency>

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -214,13 +214,13 @@ class StreamSummary[T] private (val capacity: Int,
         sb.append("},")
       }
       if (b.counterList.size() > 0) {
-        sb.deleteCharAt(sb.length() - 1)
+        sb.deleteCharAt(sb.length - 1)
       }
       sb.append("]},")
       bNode = bNode.getPrev
     }
     if (bucketList.size() > 0) {
-      sb.deleteCharAt(sb.length() - 1)
+      sb.deleteCharAt(sb.length - 1)
     }
     sb.append(']')
     sb.toString()

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,8 +8,6 @@
 
 package org.locationtech.geomesa.index.view
 
-import java.awt.RenderingHints
-
 import com.typesafe.config._
 import org.geotools.data.DataAccessFactory.Param
 import org.geotools.data.{DataStore, DataStoreFactorySpi, DataStoreFinder}
@@ -17,8 +15,10 @@ import org.geotools.filter.text.ecql.ECQL
 import org.locationtech.geomesa.index.geotools.GeoMesaDataStoreFactory.{GeoMesaDataStoreInfo, NamespaceParams}
 import org.locationtech.geomesa.utils.classpath.ServiceLoader
 import org.locationtech.geomesa.utils.geotools.GeoMesaParam
+import org.locationtech.geomesa.utils.geotools.GeoMesaParam.ReadWriteFlag
 import org.opengis.filter.Filter
 
+import java.awt.RenderingHints
 import scala.util.control.NonFatal
 import scala.util.{Failure, Success, Try}
 
@@ -39,7 +39,7 @@ class MergedDataStoreViewFactory extends DataStoreFactorySpi {
 
   override def createNewDataStore(params: java.util.Map[String, java.io.Serializable]): DataStore = {
     val configs: Seq[Config] = {
-      val explicit = Option(ConfigParam.lookup(params)).map(ConfigFactory.parseString)
+      val explicit = Option(ConfigParam.lookup(params)).map(c => ConfigFactory.parseString(c).resolve())
       val loaded = ConfigLoaderParam.flatMap(_.lookupOpt(params)).flatMap { name =>
         ServiceLoader.load[MergedViewConfigLoader]().find(_.getClass.getName == name).map(_.load())
       }
@@ -80,7 +80,10 @@ class MergedDataStoreViewFactory extends DataStoreFactorySpi {
       case NonFatal(e) => stores.result.foreach(_._1.dispose()); throw e
     }
 
-    new MergedDataStoreView(stores.result, namespace)
+    val deduplicate = DeduplicateParam.lookup(params).booleanValue()
+    val parallel = ParallelScanParam.lookup(params).booleanValue()
+
+    new MergedDataStoreView(stores.result, deduplicate, parallel, namespace)
   }
 
   override def getDisplayName: String = DisplayName
@@ -99,18 +102,49 @@ object MergedDataStoreViewFactory extends GeoMesaDataStoreInfo with NamespacePar
   override val DisplayName: String = "Merged DataStore View (GeoMesa)"
   override val Description: String = "A merged, read-only view of multiple data stores"
 
-  val StoreFilterParam = new GeoMesaParam[String]("geomesa.merged.store.filter")
+  val StoreFilterParam = new GeoMesaParam[String]("geomesa.merged.store.filter", readWrite = ReadWriteFlag.ReadOnly)
 
   val ConfigLoaderParam: Option[GeoMesaParam[String]] = {
     val loaders = ServiceLoader.load[MergedViewConfigLoader]().map(_.getClass.getName)
     if (loaders.isEmpty) { None } else {
-      val param = new GeoMesaParam[String]("geomesa.merged.loader", "Loader used to configure the underlying data stores to query", enumerations = loaders)
+      val param =
+        new GeoMesaParam[String](
+          "geomesa.merged.loader",
+          "Loader used to configure the underlying data stores to query",
+          enumerations = loaders,
+          readWrite = ReadWriteFlag.ReadOnly
+        )
       Some(param)
     }
   }
-  val ConfigParam = new GeoMesaParam[String]("geomesa.merged.stores", "Typesafe configuration defining the underlying data stores to query", optional = ConfigLoaderParam.isDefined, largeText = true)
 
-  override val ParameterInfo: Array[GeoMesaParam[_]] = ConfigLoaderParam.toArray :+ ConfigParam
+  val ConfigParam =
+    new GeoMesaParam[String](
+      "geomesa.merged.stores",
+      "Typesafe configuration defining the underlying data stores to query",
+      optional = ConfigLoaderParam.isDefined,
+      largeText = true,
+      readWrite = ReadWriteFlag.ReadOnly
+    )
+
+  val DeduplicateParam =
+    new GeoMesaParam[java.lang.Boolean](
+      "geomesa.merged.deduplicate",
+      "Deduplicate the features returned from each store",
+      default = java.lang.Boolean.FALSE,
+      readWrite = ReadWriteFlag.ReadOnly
+    )
+
+  val ParallelScanParam =
+    new GeoMesaParam[java.lang.Boolean](
+      "geomesa.merged.scan.parallel",
+      "Scan each store in parallel, instead of sequentially",
+      default = java.lang.Boolean.FALSE,
+      readWrite = ReadWriteFlag.ReadOnly
+    )
+
+  override val ParameterInfo: Array[GeoMesaParam[_ <: AnyRef]] =
+    ConfigLoaderParam.toArray ++ Array[GeoMesaParam[_ <: AnyRef]](ConfigParam, DeduplicateParam, ParallelScanParam)
 
   override def canProcess(params: java.util.Map[String, _ <: java.io.Serializable]): Boolean =
     params.containsKey(ConfigParam.key) || ConfigLoaderParam.exists(p => params.containsKey(p.key))

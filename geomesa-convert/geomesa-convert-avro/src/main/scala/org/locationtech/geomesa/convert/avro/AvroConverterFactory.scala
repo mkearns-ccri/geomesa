@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -22,7 +22,7 @@ import org.locationtech.geomesa.convert2.TypeInference.{FunctionTransform, Infer
 import org.locationtech.geomesa.convert2.transforms.Expression
 import org.locationtech.geomesa.convert2.{AbstractConverterFactory, TypeInference}
 import org.locationtech.geomesa.features.avro._
-import org.locationtech.geomesa.features.serialization.ObjectType
+import org.locationtech.geomesa.utils.geotools.ObjectType
 import org.locationtech.geomesa.utils.io.WithClose
 import org.opengis.feature.simple.SimpleFeatureType
 import pureconfig.ConfigObjectCursor
@@ -42,9 +42,6 @@ class AvroConverterFactory extends AbstractConverterFactory[AvroConverter, AvroC
   override protected implicit def configConvert: ConverterConfigConvert[AvroConfig] = AvroConfigConvert
   override protected implicit def fieldConvert: FieldConvert[BasicField] = BasicFieldConvert
   override protected implicit def optsConvert: ConverterOptionsConvert[BasicOptions] = BasicOptionsConvert
-
-  override def infer(is: InputStream, sft: Option[SimpleFeatureType]): Option[(SimpleFeatureType, Config)] =
-    infer(is, sft, None)
 
   /**
     * Note: only works on Avro files with embedded schemas
@@ -124,8 +121,18 @@ class AvroConverterFactory extends AbstractConverterFactory[AvroConverter, AvroC
         }
 
         // validate the existing schema, if any
-        if (sft.exists(_.getAttributeDescriptors.asScala != schema.getAttributeDescriptors.asScala)) {
-          throw new IllegalArgumentException("Inferred schema does not match existing schema")
+        sft.foreach { existing =>
+          val inferred = schema.getAttributeDescriptors.asScala
+          val matched = existing.getAttributeDescriptors.asScala.count { d =>
+            inferred.exists { i =>
+              i.getLocalName == d.getLocalName && d.getType.getBinding.isAssignableFrom(i.getType.getBinding)
+            }
+          }
+          if (matched == 0) {
+            throw new IllegalArgumentException("Inferred schema does not match existing schema")
+          } else if (matched < existing.getAttributeCount) {
+            logger.warn(s"Inferred schema only matched $matched out of ${existing.getAttributeCount} attributes")
+          }
         }
 
         val converterConfig = AvroConfig(typeToProcess, SchemaEmbedded, Some(id), Map.empty, userData)

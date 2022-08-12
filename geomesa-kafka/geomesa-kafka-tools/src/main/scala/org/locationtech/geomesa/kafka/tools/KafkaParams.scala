@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -28,6 +28,9 @@ trait KafkaDataStoreParams {
 
   @Parameter(names = Array("-p", "--zkpath"), description = "Zookeeper path where feature schemas are saved")
   var zkPath: String = KafkaDataStoreFactory.DefaultZkPath
+
+  @Parameter(names = Array("--schema-registry"), description = "URL to a Confluent Schema Registry")
+  var schemaRegistryUrl: String = _
 
   def numConsumers: Int
   def replication: Int

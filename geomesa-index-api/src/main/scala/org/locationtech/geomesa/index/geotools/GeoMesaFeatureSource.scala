@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -19,6 +19,11 @@ import org.geotools.data._
 import org.geotools.data.simple.{SimpleFeatureCollection, SimpleFeatureIterator, SimpleFeatureSource}
 import org.geotools.feature.collection.SortedSimpleFeatureCollection
 import org.geotools.geometry.jts.ReferencedEnvelope
+<<<<<<< HEAD
+=======
+import org.geotools.util.factory.Hints
+import org.locationtech.geomesa.index.conf.QueryHints.{COST_EVALUATION, QUERY_INDEX}
+>>>>>>> main
 import org.locationtech.geomesa.index.conf.QueryProperties.QueryExactCountMaxFeatures
 import org.locationtech.geomesa.index.geotools.GeoMesaFeatureSource.{DelegatingResourceInfo, GeoMesaQueryCapabilities}
 import org.locationtech.geomesa.index.planning.QueryRunner
@@ -61,13 +66,24 @@ class GeoMesaFeatureSource(val ds: DataStore with HasGeoMesaStats,
     import org.locationtech.geomesa.index.conf.QueryProperties.QueryExactCount
 
     val useExactCount = query.getHints.isExactCount.getOrElse(QueryExactCount.get.toBoolean)
+<<<<<<< HEAD
+=======
+    val hints = new Hints()
+    GeoMesaFeatureSource.CountHints.foreach { key =>
+      if (query.getHints.contains(key)) { hints.put(key, query.getHints.get(key)) }
+    }
+>>>>>>> main
 
     val count = if (useExactCount &&
       !query.isMaxFeaturesUnlimited &&
       query.getMaxFeatures < QueryExactCountMaxFeatures.get.toInt) {
       SelfClosingIterator(getFeatures(query)).size
     } else {
+<<<<<<< HEAD
       val statsCount = ds.stats.getCount(getSchema, query.getFilter, useExactCount).getOrElse(-1L)
+=======
+      val statsCount = ds.stats.getCount(getSchema, query.getFilter, useExactCount, hints).getOrElse(-1L)
+>>>>>>> main
       if (query.isMaxFeaturesUnlimited) {
         statsCount
       } else {
@@ -118,6 +134,8 @@ class GeoMesaFeatureSource(val ds: DataStore with HasGeoMesaStats,
 }
 
 object GeoMesaFeatureSource {
+
+  val CountHints = Seq(QUERY_INDEX, COST_EVALUATION)
 
   object GeoMesaQueryCapabilities extends QueryCapabilities {
     override def isOffsetSupported = false

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -9,29 +9,23 @@
 package org.locationtech.geomesa.index.geotools
 
 import org.geotools.data.collection.ListFeatureCollection
-import org.geotools.data.simple.{SimpleFeatureCollection, SimpleFeatureSource}
-import org.geotools.data.store.{ReTypingFeatureCollection, ReprojectingFeatureCollection}
 import org.geotools.data.{DataStore, Query, Transaction}
-import org.geotools.feature.collection.{DecoratingFeatureCollection, DecoratingSimpleFeatureCollection}
-import org.geotools.feature.simple.SimpleFeatureTypeBuilder
-import org.geotools.feature.visitor.CalcResult
 import org.geotools.filter.text.ecql.ECQL
-import org.geotools.geometry.jts.JTS
+import org.geotools.geometry.jts.{JTS, ReferencedEnvelope}
 import org.geotools.referencing.CRS
 import org.geotools.util.factory.Hints
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.index.TestGeoMesaDataStore
-import org.locationtech.geomesa.index.geotools.GeoMesaDataStoreTest.{TestFeatureCollection, TestQueryInterceptor, TestSimpleFeatureCollection, TestVisitor}
+import org.locationtech.geomesa.index.geotools.GeoMesaDataStoreTest._
+import org.locationtech.geomesa.index.index.attribute.AttributeIndex
+import org.locationtech.geomesa.index.index.id.IdIndex
+import org.locationtech.geomesa.index.index.z3.Z3Index
 import org.locationtech.geomesa.index.planning.QueryInterceptor
-import org.locationtech.geomesa.index.process.GeoMesaProcessVisitor
 import org.locationtech.geomesa.utils.collection.SelfClosingIterator
-import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.Configs
-import org.locationtech.geomesa.utils.geotools.sft.SimpleFeatureSpecParser
 import org.locationtech.geomesa.utils.geotools.{FeatureUtils, SimpleFeatureTypes}
 import org.locationtech.geomesa.utils.io.WithClose
 import org.locationtech.jts.geom.{Geometry, Point}
-import org.opengis.feature.Feature
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 import org.opengis.filter.Filter
 import org.specs2.mutable.Specification
@@ -88,6 +82,18 @@ class GeoMesaDataStoreTest extends Specification {
       val results = SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toSeq
       results must beEmpty
     }
+    "throw an exception on invalid attributes" in {
+      val filters = Seq(
+        "names = 'foo'",
+        "bbox(g,-10,-10,10,10)",
+        "foo DURING 2018-01-01T00:00:00.000Z/2018-01-01T12:00:00.000Z",
+        "bbox(geom,-10,-10,10,10) AND foo DURING 2018-01-01T00:00:00.000Z/2018-01-01T12:00:00.000Z"
+      )
+      foreach(filters) { filter =>
+        val query = new Query("test", ECQL.toFilter(filter))
+        ds.getFeatureReader(query, Transaction.AUTO_COMMIT) must throwAn[IllegalArgumentException]
+      }
+    }
     "intercept and rewrite queries" in {
       val sft = SimpleFeatureTypes.createType("rewrite", "name:String,age:Int,dtg:Date,*geom:Point:srid=4326")
       sft.getUserData.put(SimpleFeatureTypes.Configs.QueryInterceptors, classOf[TestQueryInterceptor].getName)
@@ -106,117 +112,146 @@ class GeoMesaDataStoreTest extends Specification {
       results = SelfClosingIterator(ds.getFeatureReader(new Query(sft.getTypeName, ECQL.toFilter("bbox(geom,39,54,51,56)")), Transaction.AUTO_COMMIT)).toSeq
       results must haveLength(10)
     }
-    "update schemas" in {
-      foreach(Seq(true, false)) { partitioning =>
-        val ds = new TestGeoMesaDataStore(true)
-        val spec = "name:String:index=true,age:Int,dtg:Date,*geom:Point:srid=4326;"
-        if (partitioning) {
-          ds.createSchema(SimpleFeatureTypes.createType("test", s"$spec${Configs.TablePartitioning}=time"))
-        } else {
-          ds.createSchema(SimpleFeatureTypes.createType("test", spec))
+    "block queries which would cause a full table scan" in {
+      val sft = SimpleFeatureTypes.createType("61b44359ddb84822983587389d6a28a4",
+        "name:String,age:Int,dtg:Date,*geom:Point:srid=4326;geomesa.indices.enabled='id,z3,attr:name'")
+      sft.getUserData.put("geomesa.query.interceptors",
+        "org.locationtech.geomesa.index.planning.guard.FullTableScanQueryGuard");
+
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(sft)
+
+      val valid = Seq(
+        "name = 'bob'",
+        "IN('123')",
+        "bbox(geom,-10,-10,10,10) AND dtg during 2020-01-01T00:00:00.000Z/2020-01-01T23:59:59.000Z",
+        "bbox(geom,-10,-10,10,10) AND (dtg during 2020-01-01T00:00:00.000Z/2020-01-01T00:59:59.000Z OR dtg during 2020-01-01T12:00:00.000Z/2020-01-01T12:59:59.000Z)"
+      )
+
+      val invalid = Seq(
+        "INCLUDE",
+        "bbox(geom,-180,-90,180,90)",
+        "name ilike '%b'",
+        "not IN('1')"
+      )
+
+      foreach(valid.map(ECQL.toFilter)) { filter =>
+        SelfClosingIterator(ds.getFeatureReader(new Query(sft.getTypeName, filter), Transaction.AUTO_COMMIT)).toList must
+          beEmpty
+      }
+
+      foreach(invalid.map(ECQL.toFilter)) { filter =>
+        val query = new Query(sft.getTypeName, filter)
+        SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList must
+            throwAn[IllegalArgumentException]
+        // you can set max features and use a full-table scan
+        query.setMaxFeatures(50)
+        SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList must beEmpty
+      }
+      ds.dispose()
+
+      // create a new store so the sys prop gets evaluated when the query guards are loaded
+      val ds2 = new TestGeoMesaDataStore(true)
+      System.setProperty(s"geomesa.scan.${sft.getTypeName}.block-full-table", "false")
+      try {
+        ds2.createSchema(sft)
+        foreach(invalid.map(ECQL.toFilter)) { filter =>
+          SelfClosingIterator(ds2.getFeatureReader(new Query(sft.getTypeName, filter), Transaction.AUTO_COMMIT)).toList must
+              beEmpty
         }
-
-        var sft = ds.getSchema("test")
-        val feature = ScalaSimpleFeature.create(sft, "0", "name0", 0, "2018-01-01T06:00:00.000Z", "POINT (40 55)")
-        WithClose(ds.getFeatureWriterAppend(sft.getTypeName, Transaction.AUTO_COMMIT)) { writer =>
-          FeatureUtils.write(writer, feature, useProvidedFid = true)
-        }
-
-        var filters = Seq(
-          "name = 'name0'",
-          "bbox(geom,38,53,42,57)",
-          "bbox(geom,38,53,42,57) AND dtg during 2018-01-01T00:00:00.000Z/2018-01-01T12:00:00.000Z",
-          "IN ('0')"
-        ).map(ECQL.toFilter)
-
-        forall(filters) { filter =>
-          val reader = ds.getFeatureReader(new Query(sft.getTypeName, filter), Transaction.AUTO_COMMIT)
-          SelfClosingIterator(reader).toList mustEqual Seq(feature)
-        }
-        ds.stats.getCount(sft) must beSome(1L)
-
-        // rename
-        ds.updateSchema("test", SimpleFeatureTypes.renameSft(sft, "rename"))
-
-        ds.getSchema("test") must beNull
-
-        sft = ds.getSchema("rename")
-
-        sft must not(beNull)
-        sft .getTypeName mustEqual "rename"
-
-        forall(filters) { filter =>
-          val reader = ds.getFeatureReader(new Query(sft.getTypeName, filter), Transaction.AUTO_COMMIT)
-          SelfClosingIterator(reader).toList mustEqual Seq(ScalaSimpleFeature.copy(sft, feature))
-        }
-        ds.stats.getCount(sft) must beSome(1L)
-        ds.stats.getMinMax[String](sft, "name", exact = false).map(_.max) must beSome("name0")
-
-        // rename column
-        Some(new SimpleFeatureTypeBuilder()).foreach { builder =>
-          builder.init(ds.getSchema("rename"))
-          builder.set(0, SimpleFeatureSpecParser.parseAttribute("names:String:index=true").toDescriptor)
-          val update = builder.buildFeatureType()
-          update.getUserData.putAll(ds.getSchema("rename").getUserData)
-          ds.updateSchema("rename", update)
-        }
-
-        sft = ds.getSchema("rename")
-        sft must not(beNull)
-        sft.getTypeName mustEqual "rename"
-        sft.getDescriptor(0).getLocalName mustEqual "names"
-        sft.getDescriptor("names") mustEqual sft.getDescriptor(0)
-
-        filters = Seq(ECQL.toFilter("names = 'name0'")) ++ filters.drop(1)
-
-        forall(filters) { filter =>
-          val reader = ds.getFeatureReader(new Query(sft.getTypeName, filter), Transaction.AUTO_COMMIT)
-          SelfClosingIterator(reader).toList mustEqual Seq(ScalaSimpleFeature.copy(sft, feature))
-        }
-        ds.stats.getCount(sft) must beSome(1L)
-        ds.stats.getMinMax[String](sft, "names", exact = false).map(_.max) must beSome("name0")
-
-        // rename type and column
-        Some(new SimpleFeatureTypeBuilder()).foreach { builder =>
-          builder.init(ds.getSchema("rename"))
-          builder.set(0, SimpleFeatureSpecParser.parseAttribute("n:String").toDescriptor)
-          builder.setName("foo")
-          val update = builder.buildFeatureType()
-          update.getUserData.putAll(ds.getSchema("rename").getUserData)
-          ds.updateSchema("rename", update)
-        }
-
-        sft = ds.getSchema("foo")
-        sft must not(beNull)
-        sft.getTypeName mustEqual "foo"
-        sft.getDescriptor(0).getLocalName mustEqual "n"
-        sft.getDescriptor("n") mustEqual sft.getDescriptor(0)
-        ds.getSchema("rename") must beNull
-
-        filters = Seq(ECQL.toFilter("n = 'name0'")) ++ filters.drop(1)
-
-        forall(filters) { filter =>
-          val reader = ds.getFeatureReader(new Query(sft.getTypeName, filter), Transaction.AUTO_COMMIT)
-          SelfClosingIterator(reader).toList mustEqual Seq(ScalaSimpleFeature.copy(sft, feature))
-        }
-        ds.stats.getCount(sft) must beSome(1L)
-        ds.stats.getMinMax[String](sft, "n", exact = false).map(_.max) must beSome("name0")
+      } finally {
+        System.clearProperty(s"geomesa.scan.${sft.getTypeName}.block-full-table")
+        ds2.dispose()
       }
     }
-    "unwrap decorating feature collections" in {
-      val fc = ds.getFeatureSource(sft.getTypeName).getFeatures()
-      val collections = Seq(
-        new ReTypingFeatureCollection(fc, SimpleFeatureTypes.renameSft(sft, "foo")),
-        new ReprojectingFeatureCollection(fc, epsg3857),
-        new TestFeatureCollection(fc),
-        new TestSimpleFeatureCollection(fc)
-      )
-      foreach(collections) { collection =>
-        val visitor = new TestVisitor()
-        GeoMesaFeatureCollection.visit(collection, visitor)
-        visitor.visited must beFalse
-        visitor.executed must beTrue
+    "support timestamp types with stats" in {
+      val sft = SimpleFeatureTypes.createType("ts", "dtg:Timestamp,*geom:Point:srid=4326")
+      ds.createSchema(sft)
+      val feature = ScalaSimpleFeature.create(sft, "0", "2020-01-20T00:00:00.000Z", "POINT (45 55)")
+      WithClose(ds.getFeatureWriterAppend(sft.getTypeName, Transaction.AUTO_COMMIT)) { writer =>
+        FeatureUtils.write(writer, feature, useProvidedFid = true)
       }
+      SelfClosingIterator(ds.getFeatureReader(new Query(sft.getTypeName), Transaction.AUTO_COMMIT)).toList mustEqual
+          Seq(feature)
+      ds.stats.getBounds(sft) mustEqual
+          new ReferencedEnvelope(feature.getDefaultGeometry.asInstanceOf[Point].getEnvelopeInternal, CRS_EPSG_4326)
+    }
+    "prioritize temporal filter plans" in {
+      val spec = "name:String:index=true,age:Int,dtg:Date,*geom:Point:srid=4326"
+
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(SimpleFeatureTypes.createType("default", spec))
+      ds.createSchema(SimpleFeatureTypes.createType("temporal", s"$spec;geomesa.temporal.priority=true"))
+
+      val filters = Seq(
+        ("name like 'a%' and dtg DURING 2020-01-01T00:00:00.00Z/2020-01-02T00:00:00.00Z", AttributeIndex, Z3Index),
+        ("name > 'a' AND name < 'b' and dtg DURING 2020-01-01T00:00:00.00Z/2020-01-02T00:00:00.00Z", AttributeIndex, Z3Index),
+        ("name = 'a' and dtg DURING 2020-01-01T00:00:00.00Z/2020-01-02T00:00:00.00Z", AttributeIndex, AttributeIndex),
+        ("IN('0') and bbox(geom,-10,-10,10,10) and dtg DURING 2020-01-01T00:00:00.00Z/2020-01-02T00:00:00.00Z", IdIndex, IdIndex)
+      )
+
+      foreach(filters) { case (f, default, temporal) =>
+        ds.getQueryPlan(new Query("default", ECQL.toFilter(f))).map(_.filter.index.name) mustEqual Seq(default.name)
+        ds.getQueryPlan(new Query("temporal", ECQL.toFilter(f))).map(_.filter.index.name) mustEqual Seq(temporal.name)
+      }
+    }
+    "check provided fid hints during modifying writes" in {
+      val spec = "name:String:index=true,age:Int,dtg:Date,*geom:Point:srid=4326"
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(SimpleFeatureTypes.createType("test", spec))
+      val feature = ScalaSimpleFeature.create(sft, "0", "name", "20", "2020-01-20T00:00:00.000Z", "POINT (45 55)")
+      WithClose(ds.getFeatureWriterAppend(sft.getTypeName, Transaction.AUTO_COMMIT)) { writer =>
+        FeatureUtils.write(writer, feature, useProvidedFid = true)
+      }
+      SelfClosingIterator(ds.getFeatureReader(new Query(sft.getTypeName), Transaction.AUTO_COMMIT)).toList mustEqual
+          Seq(feature)
+      WithClose(ds.getFeatureWriter(sft.getTypeName, ECQL.toFilter("IN ('0')"), Transaction.AUTO_COMMIT)) { writer =>
+        writer.hasNext must beTrue
+        val update = writer.next
+        update.getUserData.put(Hints.PROVIDED_FID, "1")
+        writer.write()
+      }
+      val newId = ScalaSimpleFeature.copy(feature)
+      newId.setId("1")
+      SelfClosingIterator(ds.getFeatureReader(new Query(sft.getTypeName), Transaction.AUTO_COMMIT)).toList mustEqual
+          Seq(newId)
+    }
+    "checkout duplicate attribute names" in {
+      val spec = "foo:String,bar:Int,foo:Double,*geom:Point:srid=4326"
+      val sft = SimpleFeatureTypes.createType("test",spec)
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(sft) must throwAn[IllegalArgumentException]
+    }
+    "handle literal geometries in dwithin filters" in {
+      val spec = "name:String,dtg:Date,*geom:Point:srid=4326"
+      val sft = SimpleFeatureTypes.createType("test",spec)
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(sft)
+      val feature = ScalaSimpleFeature.create(sft, "0", "name", "2020-01-20T00:00:00.000Z", "POINT (45 55)")
+      WithClose(ds.getFeatureWriterAppend(sft.getTypeName, Transaction.AUTO_COMMIT)) { writer =>
+        FeatureUtils.write(writer, feature, useProvidedFid = true)
+      }
+      val filters =
+        Seq(
+          "dwithin(geom,POINT(45.01 55.01),10000,meters)",
+          "dwithin(geom,'POINT(45.01 55.01)',10000,meters)"
+        )
+      foreach(filters.map(ECQL.toFilter)) { filter =>
+        val query = new Query(sft.getTypeName, filter)
+        SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList mustEqual Seq(feature)
+      }
+    }
+    "handle ORs between indexed attribute fields" >> {
+      val spec =
+        "attr1:Long:cardinality=high:index=true,attr2:Long:cardinality=high:index=true," +
+            "name:String:cardinality=high:index=true,dtg:Date,*geom:Point:srid=4326"
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(SimpleFeatureTypes.createType("test", spec))
+      val filter =
+        ECQL.toFilter("(attr1=1 OR attr2=2 OR name='3') and dtg during 2020-01-01T00:00:00.000Z/2020-01-02T00:00:00.000Z")
+      val plans = ds.getQueryPlan(new Query("test", filter))
+      plans must haveLength(3)
+      foreach(plans)(_.filter.index.name mustEqual AttributeIndex.name)
     }
   }
 }
@@ -229,20 +264,4 @@ object GeoMesaDataStoreTest {
       if (query.getFilter == Filter.INCLUDE) { query.setFilter(Filter.EXCLUDE) }
     override def close(): Unit = {}
   }
-
-  class TestVisitor extends GeoMesaProcessVisitor {
-    var executed = false
-    var visited = false
-    override def execute(source: SimpleFeatureSource, query: Query): Unit = executed = true
-    override def visit(feature: Feature): Unit = visited = true
-    override def getResult: CalcResult = null
-  }
-
-  // example class extending DecoratingFeatureCollection
-  class TestFeatureCollection(delegate: SimpleFeatureCollection)
-      extends DecoratingFeatureCollection[SimpleFeatureType, SimpleFeature](delegate)
-
-  // example class extending DecoratingSimpleFeatureCollection
-  class TestSimpleFeatureCollection(delegate: SimpleFeatureCollection)
-      extends DecoratingSimpleFeatureCollection(delegate)
 }

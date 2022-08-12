@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -279,8 +279,10 @@ object GeoMesaRelation extends LazyLogging {
           Some(IndexedRDD(rdd))
       }
     }
+   
+   val filter = Option(ECQL.toFilter(params.getOrElse("query", "INCLUDE")))
 
-    GeoMesaRelation(sqlContext, sft, schema, params, None, cached, partitioned)
+    GeoMesaRelation(sqlContext, sft, schema, params, filter, cached, partitioned)
   }
 
   /**

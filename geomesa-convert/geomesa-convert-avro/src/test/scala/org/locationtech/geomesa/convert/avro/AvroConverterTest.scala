@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,7 +8,7 @@
 
 package org.locationtech.geomesa.convert.avro
 
-import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
+import java.io.{ByteArrayInputStream, ByteArrayOutputStream, File}
 
 import com.google.common.hash.Hashing
 import com.typesafe.config.{ConfigFactory, ConfigRenderOptions}
@@ -60,9 +60,9 @@ class AvroConverterTest extends Specification with AvroUtils with LazyLogging {
         sf.getAttributeCount must be equalTo 2
         sf.getAttribute("dtg") must not(beNull)
 
-        ec.counter.getFailure mustEqual 0L
-        ec.counter.getSuccess mustEqual 1L
-        ec.counter.getLineCount mustEqual 1L  // only 1 record passed in itr
+        ec.failure.getCount mustEqual 0L
+        ec.success.getCount mustEqual 1L
+        ec.line mustEqual 1L  // only 1 record passed in itr
       }
     }
 
@@ -96,9 +96,9 @@ class AvroConverterTest extends Specification with AvroUtils with LazyLogging {
         sf.getAttribute("dtg") must not(beNull)
         sf.getUserData.get("my.user.key") mustEqual 45d
 
-        ec.counter.getFailure mustEqual 0L
-        ec.counter.getSuccess mustEqual 1L
-        ec.counter.getLineCount mustEqual 1L  // only 1 record passed in itr
+        ec.failure.getCount mustEqual 0L
+        ec.success.getCount mustEqual 1L
+        ec.line mustEqual 1L  // only 1 record passed in itr
       }
     }
 
@@ -132,9 +132,9 @@ class AvroConverterTest extends Specification with AvroUtils with LazyLogging {
           sf.getAttribute("dtg") must not(beNull)
         }
 
-        ec.counter.getFailure mustEqual 0L
-        ec.counter.getSuccess mustEqual 2L
-        ec.counter.getLineCount mustEqual 2L
+        ec.failure.getCount mustEqual 0L
+        ec.success.getCount mustEqual 2L
+        ec.line mustEqual 2L
       }
     }
 
@@ -175,9 +175,9 @@ class AvroConverterTest extends Specification with AvroUtils with LazyLogging {
           sf.getAttribute("dtg") must not(beNull)
         }
 
-        ec.counter.getFailure mustEqual 0L
-        ec.counter.getSuccess mustEqual 2L
-        ec.counter.getLineCount mustEqual 2L
+        ec.failure.getCount mustEqual 0L
+        ec.success.getCount mustEqual 2L
+        ec.line mustEqual 2L
       }
     }
 
@@ -208,6 +208,34 @@ class AvroConverterTest extends Specification with AvroUtils with LazyLogging {
 
         converted must containTheSameElementsAs(features)
         converted.map(_.getUserData.get("foo")) must containTheSameElementsAs(Seq.tabulate(10)(i => s"bar$i"))
+      }
+    }
+
+    "automatically convert geomesa avro files with lenient matching" >> {
+      val sft = SimpleFeatureTypes.createType("test", "name:String,age:Int,dtg:Date,*geom:Point:srid=4326")
+      val features = Seq.tabulate(10) { i =>
+        ScalaSimpleFeature.create(sft, s"$i", s"name$i", i, s"2018-01-01T0$i:00:00.000Z", s"POINT(4$i 55)")
+      }
+
+      val out = new ByteArrayOutputStream()
+      WithClose(new AvroDataFileWriter(out, sft))(writer => features.foreach(writer.append))
+
+      val bytes = out.toByteArray
+
+      val updated = SimpleFeatureTypes.createType("test", "name:String,age:Int,dtg:Date,*geom:Point:srid=4326,tag:String")
+      val inferred = new AvroConverterFactory().infer(new ByteArrayInputStream(bytes), Some(updated))
+
+      inferred must beSome
+      inferred.get._1 mustEqual sft
+
+      logger.trace(inferred.get._2.root().render(ConfigRenderOptions.concise().setFormatted(true)))
+
+      WithClose(SimpleFeatureConverter(updated, inferred.get._2)) { converter =>
+        converter must not(beNull)
+
+        val converted = SelfClosingIterator(converter.process(new ByteArrayInputStream(bytes))).toList
+
+        converted must containTheSameElementsAs(features.map(ScalaSimpleFeature.retype(updated, _)))
       }
     }
 
@@ -278,6 +306,52 @@ class AvroConverterTest extends Specification with AvroUtils with LazyLogging {
 
         // note: feature ids won't be the same
         converted.map(_.getAttributes) must containTheSameElementsAs(expected.map(_.getAttributes))
+      }
+    }
+
+    "calculate record bytes for union-type schemas" >> {
+      val schema = parser.parse(getClass.getClassLoader.getResourceAsStream("union.avsc"))
+
+      // generate the test data - this is stored in resources already
+      if (false) {
+        val person = new GenericData.Record(schema.getTypes.get(0))
+        Seq("name" -> "pname", "age" -> 21, "location" -> "POINT (45 55)").foreach { case (k, v) => person.put(k, v) }
+        val animal = new GenericData.Record(schema.getTypes.get(1))
+        Seq("name" -> "aname", "breed" -> "pug", "location" -> "POINT (1 2)").foreach { case (k, v) => animal.put(k, v) }
+        val file = new File("union.avro")
+        val datumWriter = new GenericDatumWriter[GenericRecord](schema)
+        val dataFileWriter = new DataFileWriter[GenericRecord](datumWriter)
+        dataFileWriter.create(schema, file)
+        dataFileWriter.append(person)
+        dataFileWriter.append(animal)
+        dataFileWriter.close()
+      }
+
+      val sft = SimpleFeatureTypes.createType("union", "name:String,*geom:Point:srid=4326")
+
+      val conf = ConfigFactory.parseString(
+        """
+          | {
+          |   type        = "avro"
+          |   schema      = "embedded"
+          |   id-field    = "md5($0)"
+          |   fields = [
+          |     { name = "name", transform = "avroPath($1, '/name')" },
+          |     { name = "geom", transform = "point(avroPath($1, '/location'))" }
+          |   ]
+          | }
+        """.stripMargin)
+
+      WithClose(SimpleFeatureConverter(sft, conf)) { converter =>
+        val ec = converter.createEvaluationContext()
+
+        // pass two messages to check message buffering for record bytes
+        val res = WithClose(converter.process(getClass.getClassLoader.getResourceAsStream("union.avro"), ec))(_.toList)
+        res must haveLength(2)
+        res(0).getAttribute(0) mustEqual "pname"
+        res(1).getAttribute(0) mustEqual "aname"
+        res(0).getAttribute(1).toString mustEqual "POINT (45 55)"
+        res(1).getAttribute(1).toString mustEqual "POINT (1 2)"
       }
     }
   }

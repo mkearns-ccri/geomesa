@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>geomesa-hbase_2.11</artifactId>
+        <artifactId>geomesa-hbase_2.12</artifactId>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <version>2.4.3-SNAPSHOT</version>
+=======
+        <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <name>GeoMesa HBase Spark</name>
-    <artifactId>geomesa-hbase-spark_2.11</artifactId>
+    <artifactId>geomesa-hbase-spark_2.12</artifactId>
 
     <dependencies>
         <dependency>
@@ -20,29 +24,11 @@
             <artifactId>geomesa-hbase-jobs_${scala.binary.version}</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.apache.hbase</groupId>
-            <artifactId>hbase-server</artifactId>
-            <version>${hbase.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>javax.servlet</groupId>
-                    <artifactId>servlet-api</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>tomcat</groupId>
-                    <artifactId>jasper-compiler</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>tomcat</groupId>
-                    <artifactId>jasper-runtime</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
             <groupId>org.locationtech.geomesa</groupId>
             <artifactId>geomesa-spark-core_${scala.binary.version}</artifactId>
         </dependency>
 
+        <!-- provided deps -->
         <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.binary.version}</artifactId>
@@ -53,6 +39,10 @@
             <artifactId>spark-sql_${scala.binary.version}</artifactId>
             <version>${spark.version}</version>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hbase</groupId>
+            <artifactId>hbase-mapreduce</artifactId>
         </dependency>
 
         <!-- test dependencies -->

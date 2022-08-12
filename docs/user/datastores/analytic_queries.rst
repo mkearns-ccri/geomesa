@@ -22,6 +22,8 @@ be returned. Due to distributed processing, the actual count returned is not gua
 percentage - however, there will never be less features than requested. For example, if you sample 5 features
 at 10%, you will get back anywhere from 1 to 5 features, depending on how your data is distributed in the cluster.
 
+Sampling can also be combined with the other analytic queries mentioned below.
+
 +----------------------+------------------------------------+----------------------+
 | Key                  | Type                               | GeoServer Conversion |
 +======================+====================================+======================+
@@ -36,7 +38,7 @@ at 10%, you will get back anywhere from 1 to 5 features, depending on how your d
 
         import org.locationtech.geomesa.index.conf.QueryHints;
 
-         // returns 10% of features, threaded by 'track' attribute
+        // returns 10% of features, threaded by 'track' attribute
         query.getHints().put(QueryHints.SAMPLING(), new Float(0.1));
         query.getHints().put(QueryHints.SAMPLE_BY(), "track");
 
@@ -66,6 +68,8 @@ heatmap from the query result. See :ref:`gdelt_heatmaps` for more information.
 | Key                       | Type                   | GeoServer Conversion |
 +===========================+========================+======================+
 | QueryHints.DENSITY_BBOX   | ``ReferencedEnvelope`` | Use WPS              |
++---------------------------+------------------------+                      +
+| QueryHints.DENSITY_GEOM   | String                 |                      |
 +---------------------------+------------------------+                      +
 | QueryHints.DENSITY_WEIGHT | String                 |                      |
 +---------------------------+------------------------+                      +
@@ -183,11 +187,11 @@ Z3 frequency               Z3Frequency         ``Z3Frequency("geom","dtg",<time 
 histogram                  Histogram           ``Histogram("foo",<bins>,<min>,<max>)``
 Z3 histogram               Z3Histogram         ``Z3Histogram("geom","dtg",<time period>,<bins>)``
 descriptive statistics     DescriptiveStats    ``DescriptiveStats("foo","bar")``
-multiple stats             SeqStat             ``Count(),MinMax("foo")``
+multiple stats             SeqStat             ``Count();MinMax("foo")``
 grouped stats              GroupBy             ``GroupBy("foo",MinMax("bar"))``
 ========================== =================== =======================================================
 
-As seen in the table above, multiple stats can be calculated at once through comma delimiting. In addition,
+As seen in the table above, multiple stats can be calculated at once through semi-colon delimiting. In addition,
 stats can be calculated on grouped values by using ``GroupBy`` on a nested stat expression.
 
 The Z3 frequency and histogram are special stats that will operate on the Z3 value created from the geometry and date.
@@ -239,40 +243,30 @@ The result of an Arrow query will be an iterator of SimpleFeatures, where the fi
 byte array. Concatenated together, the byte arrays will form an Arrow file, in the Arrow streaming format
 (i.e. no footer).
 
-In GeoServer you can use the ``ArrowConversionProcess``. Otherwise, the encoding is controlled through the
+In GeoServer you can use the ``ArrowConversionProcess``, or through WFS by setting
+``outputFormat=application/vnd.arrow`` and controlling the configuration through the ``format_options`` parameter,
+e.g. ``format_options=includeFids:true;batchSize:1000``. Otherwise, the encoding is controlled through the
 following query hints:
 
-+-------------------------------------+--------------------+----------------------+
-| Key                                 | Type               | GeoServer Conversion |
-+=====================================+====================+======================+
-| QueryHints.ARROW_ENCODE             | Boolean            | Use WPS              |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_INCLUDE_FID        | Boolean (optional) |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_PROXY_FID          | Boolean (optional) |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_SORT_FIELD         | String (optional)  |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_SORT_REVERSE       | Boolean (optional) |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_DICTIONARY_FIELDS  | String (optional)  |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_DICTIONARY_VALUES  | String (optional)  |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_DICTIONARY_CACHED  | Boolean (optional) |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_MULTI_FILE         | Boolean (optional) |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_DOUBLE_PASS        | Boolean (optional) |                      |
-+-------------------------------------+--------------------+                      +
-| QueryHints.ARROW_BATCH_SIZE         | Integer (optional) |                      |
-+-------------------------------------+--------------------+----------------------+
-
-.. warning::
-
-    Arrow conversion requires ``jackson-core-2.6.x``. Some versions of GeoServer ship with an older
-    version, ``jackson-core-2.5.0.jar``. After installing the GeoMesa GeoServer plugin, be sure to delete
-    the older JAR from GeoServer's ``WEB-INF/lib`` folder.
++-------------------------------------+--------------------+------------------------------------+
+| Key                                 | Type               | GeoServer Format Option            |
++=====================================+====================+====================================+
+| QueryHints.ARROW_ENCODE             | Boolean            | outputFormat=application/vnd.arrow |
++-------------------------------------+--------------------+------------------------------------+
+| QueryHints.ARROW_INCLUDE_FID        | Boolean (optional) | includeFids                        |
++-------------------------------------+--------------------+------------------------------------+
+| QueryHints.ARROW_PROXY_FID          | Boolean (optional) | proxyFids                          |
++-------------------------------------+--------------------+------------------------------------+
+| QueryHints.ARROW_SORT_FIELD         | String (optional)  | sortField                          |
++-------------------------------------+--------------------+------------------------------------+
+| QueryHints.ARROW_SORT_REVERSE       | Boolean (optional) | sortReverse                        |
++-------------------------------------+--------------------+------------------------------------+
+| QueryHints.ARROW_DICTIONARY_FIELDS  | String (optional)  | dictionaryFields                   |
++-------------------------------------+--------------------+------------------------------------+
+| QueryHints.ARROW_BATCH_SIZE         | Integer (optional) | batchSize                          |
++-------------------------------------+--------------------+------------------------------------+
+| QueryHints.ARROW_FORMAT_VERSION     | String (optional)  | formatVersion                      |
++-------------------------------------+--------------------+------------------------------------+
 
 Explanation of Hints
 ++++++++++++++++++++
@@ -310,63 +304,18 @@ ARROW_DICTIONARY_FIELDS
 This hint indicates which simple feature attributes should be dictionary encoded. It should be a comma-separated
 list of attribute names.
 
-ARROW_DICTIONARY_VALUES
-^^^^^^^^^^^^^^^^^^^^^^^
-
-This hint indicates known dictionary values to use for encoding each field. This allows for specifying a known
-dictionary up front, which means the dictionary doesn't have to be computed. Values which are not indicated
-in the dictionary will be grouped under 'other'.
-
-The hint should be an encoded map of attribute names to attribute values. The hint should be encoded in
-comma-separated values format, where each line indicates a different attribute. The first item in each line is
-the attribute name, and the subsequent items are dictionary values. Standard CSV escaping can be used. The function
-``org.locationtech.geomesa.utils.text.StringSerialization.encodeSeqMap`` can be used to encode a map of values.
-
-.. tabs::
-
-    .. code-tab:: scala
-
-        import org.locationtech.geomesa.index.conf.QueryHints
-        import org.locationtech.geomesa.utils.text.StringSerialization.encodeSeqMap
-
-        val dictionaries1 =
-            """
-              |name,Harry,Hermione,Severus
-              |age,20,25,30
-            """.stripMargin.trim
-
-        // equivalent to dictionaries1
-        val dictionaries2 = encodSeqMap(Map("name" -> Array("Harry", "Hermione", "Severus"), "age" -> Array(20, 25, 30)))
-
-        query.getHints.put(QueryHints.ARROW_DICTIONARY_VALUES, dictionaries1)
-
-ARROW_DICTIONARY_CACHED
-^^^^^^^^^^^^^^^^^^^^^^^
-
-This hint indicates that cached statistics (top-k) will be used for dictionaries, if available. Otherwise,
-dictionaries will be computed based on the data returned, which may be slower.
-
-ARROW_MULTI_FILE
-^^^^^^^^^^^^^^^^
-
-This hint will cause multiple logical Arrow files to be returned, instead of a single file. This will generally
-be faster, as no client-side merging needs to be done. However, any sorting will only be applied per file, not
-globally. Also, the end result tends to be larger (in bytes), as metadata and dictionary values may be repeated
-in different logical files.
-
-ARROW_DOUBLE_PASS
-^^^^^^^^^^^^^^^^^
-
-This hint will cause any dictionaries to be computed first, through a separate scan. A second scan will
-construct the Arrow files. This is the behavior of the initial GeoMesa Arrow implementation, and is only
-included for back compatibility.
-
 ARROW_BATCH_SIZE
 ^^^^^^^^^^^^^^^^
 
 This hint will restrict the number of features included in each Arrow record batch. An Arrow file contains
-a series of record batches -limiting the max size of each batch can allow memory-constrained systems to
+a series of record batches - limiting the max size of each batch can allow memory-constrained systems to
 operate more easily.
+
+ARROW_FORMAT_VERSION
+^^^^^^^^^^^^^^^^^^^^
+
+This hint controls the IPC format version for Arrow binary encoding. It should be a valid Arrow format version,
+i.e. ``0.16`` or ``0.10``. The Arrow IPC format changed slightly starting with version ``0.15``.
 
 Example Query
 +++++++++++++
@@ -457,7 +406,7 @@ BIN_LABEL
 ^^^^^^^^^
 
 This hint will trigger the creation of 24-byte records, instead of the standard 16. It should be the
-name of an attribute that will be used to general the label for each record.
+name of an attribute that will be used to generate the label for each record.
 
 BIN_SORT
 ^^^^^^^^

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -16,9 +16,14 @@ import org.geotools.data.simple.SimpleFeatureSource
 import org.geotools.data.store.{ContentDataStore, ContentEntry, ContentFeatureSource}
 import org.geotools.feature.NameImpl
 import org.geotools.util.URLs
+<<<<<<< HEAD
 import org.locationtech.geomesa.arrow.ArrowAllocator
 import org.locationtech.geomesa.arrow.io.{SimpleFeatureArrowFileReader, SimpleFeatureArrowFileWriter}
+=======
+import org.locationtech.geomesa.arrow.io.{FormatVersion, SimpleFeatureArrowFileReader, SimpleFeatureArrowFileWriter}
+>>>>>>> main
 import org.locationtech.geomesa.arrow.vector.ArrowDictionary
+import org.locationtech.geomesa.arrow.vector.SimpleFeatureVector.SimpleFeatureEncoding
 import org.locationtech.geomesa.index.metadata.{GeoMesaMetadata, HasGeoMesaMetadata}
 import org.locationtech.geomesa.index.stats.RunnableStats.UnoptimizedRunnableStats
 import org.locationtech.geomesa.index.stats.{GeoMesaStats, HasGeoMesaStats}
@@ -38,7 +43,11 @@ class ArrowDataStore(val url: URL, caching: Boolean) extends ContentDataStore wi
   // note: to avoid cache issues, don't allow writing if caching is enabled
   private lazy val writable = !caching && Try(createOutputStream()).map(_.close()).isSuccess
 
+<<<<<<< HEAD
   private lazy val allocator = ArrowAllocator("arrow-datastore")
+=======
+  private lazy val ipcOpts = FormatVersion.options(FormatVersion.ArrowFormatVersion.get)
+>>>>>>> main
 
   private lazy val reader: SimpleFeatureArrowFileReader = {
     initialized = true
@@ -71,10 +80,17 @@ class ArrowDataStore(val url: URL, caching: Boolean) extends ContentDataStore wi
     if (!writable) {
       throw new IllegalArgumentException("Can't write to the provided URL, or caching is enabled")
     }
+<<<<<<< HEAD
     WithClose(createOutputStream(false), ArrowAllocator("arrow-datastore-write")) { case (os, allocator) =>
       WithClose(SimpleFeatureArrowFileWriter(sft, os)(allocator)) { writer =>
         // just write the schema/metadata
         writer.start()
+=======
+    WithClose(createOutputStream(false)) { os =>
+      WithClose(SimpleFeatureArrowFileWriter(os, sft, Map.empty, SimpleFeatureEncoding.Max, ipcOpts, None)) { writer =>
+        // write an empty batch to write out the schema/metadata
+        writer.flush()
+>>>>>>> main
       }
     }
   }
@@ -82,7 +98,11 @@ class ArrowDataStore(val url: URL, caching: Boolean) extends ContentDataStore wi
   override def dispose(): Unit = {
     // avoid instantiating the lazy reader if it hasn't actually been used
     if (initialized) {
+<<<<<<< HEAD
       CloseWithLogging(reader, allocator)
+=======
+      CloseWithLogging(reader)
+>>>>>>> main
     }
   }
 

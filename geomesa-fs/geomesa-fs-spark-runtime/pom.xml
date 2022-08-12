@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
-        <artifactId>geomesa-fs_2.11</artifactId>
+        <artifactId>geomesa-fs_2.12</artifactId>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <version>2.4.3-SNAPSHOT</version>
+=======
+        <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
     <name>GeoMesa Filesystem Spark Runtime</name>
-    <artifactId>geomesa-fs-spark-runtime_2.11</artifactId>
+    <artifactId>geomesa-fs-spark-runtime_2.12</artifactId>
 
     <dependencies>
         <dependency>
@@ -18,11 +22,6 @@
         <dependency>
             <groupId>org.locationtech.geomesa</groupId>
             <artifactId>geomesa-fs-datastore_${scala.binary.version}</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.guava</groupId>
-            <artifactId>guava</artifactId>
-            <version>14.0.1</version>
         </dependency>
 
         <!-- only needed for packaging into the shaded jar -->
@@ -40,6 +39,20 @@
             <groupId>org.locationtech.geomesa</groupId>
             <artifactId>geomesa-jupyter-leaflet_${scala.binary.version}</artifactId>
             <scope>runtime</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.locationtech.geomesa</groupId>
+            <artifactId>geomesa-cqengine-datastore_${scala.binary.version}</artifactId>
+            <version>${project.version}</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- bring in guava and relocate it -->
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <scope>compile</scope>
         </dependency>
 
         <!--Mark dependency as provided to avoid Spark 2.2.x conflicts-->
@@ -101,9 +114,9 @@
                             <goal>shade</goal>
                         </goals>
                         <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <artifactSet>
                                 <excludes>
+                                    <exclude>org.locationtech.geomesa:geomesa-*-runtime*</exclude>
                                     <exclude>io.netty:*</exclude>
                                     <exclude>org.slf4j:*</exclude>
                                     <exclude>org.geotools:gt-render:*</exclude>
@@ -114,6 +127,7 @@
                                     <exclude>org.scala-lang:*</exclude>
                                 </excludes>
                             </artifactSet>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
                             <filters>
                                 <filter>
                                     <artifact>*:*</artifact>
@@ -128,32 +142,56 @@
                             <relocations>
                                 <relocation>
                                     <pattern>com.google.common</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.fs.shaded.com.google.common</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.google.common</shadedPattern>
                                 </relocation>
                                 <relocation>
                                     <pattern>org.apache.commons.codec</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.fs.shaded.org.apache.commons.codec</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.org.apache.commons.codec</shadedPattern>
                                 </relocation>
                                 <!-- spark also includes shapeless, relocate to avoid version conflicts -->
                                 <relocation>
                                     <pattern>shapeless</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.accumulo.shaded.shapeless</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.shapeless</shadedPattern>
+                                </relocation>
+                                <!-- avoid conflicts with zeppelin -->
+                                <relocation>
+                                    <pattern>pureconfig</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.pureconfig</shadedPattern>
+                                </relocation>
+                                <!-- Databricks uses an old version of scalalogging, include it to allow us to run on databricks clusters -->
+                                <relocation>
+                                    <pattern>com.typesafe.scalalogging</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.typesafe.scalalogging</shadedPattern>
                                 </relocation>
                                 <!-- we need parquet 1.9.0 in order to do dictionary filtering = 30% speed increase -->
                                 <!-- TODO remove this when spark supports parquet 1.9.0 out of the box -->
                                 <relocation>
                                     <pattern>org.apache.parquet</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.fs.shaded.org.apache.parquet</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.org.apache.parquet</shadedPattern>
                                 </relocation>
                                 <!-- spark also includes orc/hive, relocate to avoid version conflicts -->
                                 <relocation>
                                     <pattern>org.apache.orc</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.fs.shaded.org.apache.orc</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.org.apache.orc</shadedPattern>
                                 </relocation>
                                 <!-- spark needs json4s to use the jsonpath function -->
                                 <relocation>
                                     <pattern>org.json4s</pattern>
-                                    <shadedPattern>org.locationtech.geomesa.fs.shaded.org.json4s</shadedPattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.org.json4s</shadedPattern>
+                                </relocation>
+                                <!-- paranamer and jackson conflict with spark 3 -->
+                                <relocation>
+                                    <pattern>com.thoughtworks.paranamer</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.thoughtworks.paranamer</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.fasterxml.jackson</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.fasterxml.jackson</shadedPattern>
+                                </relocation>
+                                <!-- Databricks uses an old version of scalalogging, include it to allow us to run on databricks clusters -->
+                                <relocation>
+                                    <pattern>com.typesafe.scalalogging</pattern>
+                                    <shadedPattern>org.locationtech.geomesa.shaded.com.typesafe.scalalogging</shadedPattern>
                                 </relocation>
                             </relocations>
                             <transformers>

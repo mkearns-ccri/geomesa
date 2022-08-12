@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -10,7 +10,6 @@ package org.locationtech.geomesa.tools.export
 
 import java.io._
 import java.util.Collections
-import java.util.zip.GZIPOutputStream
 
 import com.beust.jcommander.validators.PositiveInteger
 import com.beust.jcommander.{Parameter, ParameterException}
@@ -26,18 +25,19 @@ import org.locationtech.geomesa.index.conf.QueryHints
 import org.locationtech.geomesa.index.geoserver.ViewParams
 import org.locationtech.geomesa.index.iterators.BinAggregatingScan
 import org.locationtech.geomesa.index.planning.QueryRunner
-import org.locationtech.geomesa.jobs.GeoMesaConfigurator
+import org.locationtech.geomesa.jobs.JobResult.{JobFailure, JobSuccess}
+import org.locationtech.geomesa.jobs.{GeoMesaConfigurator, JobResult}
+import org.locationtech.geomesa.tools.Command.CommandException
 import org.locationtech.geomesa.tools.DistributedRunParam.RunModes
 import org.locationtech.geomesa.tools._
+import org.locationtech.geomesa.tools.`export`.formats.FeatureExporter.LazyExportStream
 import org.locationtech.geomesa.tools.export.ExportCommand.{ChunkedExporter, ExportOptions, ExportParams, Exporter}
-import org.locationtech.geomesa.tools.export.formats.FeatureExporter.OutputStreamCounter
 import org.locationtech.geomesa.tools.export.formats.FileSystemExporter.{OrcFileSystemExporter, ParquetFileSystemExporter}
 import org.locationtech.geomesa.tools.export.formats._
 import org.locationtech.geomesa.tools.utils.ParameterConverters.{BytesConverter, ExportFormatConverter}
-import org.locationtech.geomesa.tools.utils.{JobRunner, NoopParameterSplitter, Prompt, StatusCallback}
+import org.locationtech.geomesa.tools.utils.{JobRunner, NoopParameterSplitter, Prompt, TerminalCallback}
 import org.locationtech.geomesa.utils.collection.CloseableIterator
-import org.locationtech.geomesa.utils.io.fs.FileSystemDelegate.CreateMode
-import org.locationtech.geomesa.utils.io.{IncrementingFileName, PathUtils, WithClose}
+import org.locationtech.geomesa.utils.io.{FileSizeEstimator, IncrementingFileName, PathUtils, WithClose}
 import org.locationtech.geomesa.utils.stats.MethodProfiling
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 import org.opengis.filter.Filter
@@ -49,22 +49,30 @@ import scala.util.control.NonFatal
 trait ExportCommand[DS <: DataStore] extends DataStoreCommand[DS]
     with DistributedCommand with InteractiveCommand with MethodProfiling {
 
+  import ExportCommand.CountKey
+
   override val name = "export"
   override def params: ExportParams
 
   override def libjarsFiles: Seq[String] = Seq("org/locationtech/geomesa/tools/export-libjars.list")
 
   override def execute(): Unit = {
-    def complete(fileAndCount: (String, Option[Long]), time: Long): Unit = {
-      val (file, countOption) = fileAndCount
-      val count = countOption.map(c => s" for $c features").getOrElse("")
-      Command.user.info(s"Feature export complete to $file in ${time}ms$count")
+    def complete(result: JobResult, time: Long): Unit = {
+      result match {
+        case JobSuccess(message, counts) =>
+          val count = counts.get(CountKey).map(c => s" for $c features").getOrElse("")
+          Command.user.info(s"$message$count in ${time}ms")
+
+        case JobFailure(message) =>
+          Command.user.info(s"Feature export failed in ${time}ms: $message")
+          throw new CommandException(message) // propagate out and return an exit code error
+      }
     }
 
     profile(complete _)(withDataStore(export))
   }
 
-  private def export(ds: DS): (String, Option[Long]) = {
+  private def export(ds: DS): JobResult = {
     // for file data stores, handle setting the default type name so the user doesn't have to
     for {
       p <- Option(params).collect { case p: ProvidedTypeNameParam => p }
@@ -112,13 +120,14 @@ trait ExportCommand[DS <: DataStore] extends DataStoreCommand[DS]
           case None    => new Exporter(options, query.getHints, dictionaries)
           case Some(c) => new ChunkedExporter(options, query.getHints, dictionaries, c)
         }
-        val count = try { export(ds, query, exporter) } finally { exporter.close() }
+        val count = try { export(ds, query, exporter, !params.suppressEmpty) } finally { exporter.close() }
         val outFile = options.file match {
           case None => "standard out"
           case Some(f) if chunks.isDefined => PathUtils.getBaseNameAndExtension(f).productIterator.mkString("_*")
           case Some(f) => f
         }
-        (outFile, count)
+
+        JobSuccess(s"Feature export complete to $outFile", count.map(CountKey -> _).toMap)
 
       case RunModes.Distributed =>
         val job = Job.getInstance(new Configuration, "GeoMesa Tools Export")
@@ -146,15 +155,19 @@ trait ExportCommand[DS <: DataStore] extends DataStoreCommand[DS]
         val file = options.file.getOrElse(throw new IllegalStateException("file should be Some"))
         val output = new Path(PathUtils.getUrl(file).toURI).getParent
 
-        // delete the output dir before configuring the job, as it may write the partition file there
+        // file output format doesn't generally let you write to an existing directory
         val context = FileContext.getFileContext(output.toUri, job.getConfiguration)
         if (context.util.exists(output)) {
+          val warning = s"Output directory '$output' exists - files may be overwritten"
           if (params.force) {
-            Command.user.warn(s"Output directory '$output' exists - deleting it")
-          } else if (!Prompt.confirm(s"WARNING Output directory '$output' exists, delete it and continue (y/n)? ")) {
-            throw new ParameterException(s"Output directory '$output' exists")
+            Command.user.warn(warning)
+          } else if (!Prompt.confirm(s"WARNING $warning. Continue anyway (y/n)? ")) {
+            if (Prompt.confirm("WARNING DATA MAY BE LOST - delete directory and proceed with export (y/n)? ")) {
+              context.delete(output, true)
+            } else {
+              throw new ParameterException(s"Output directory '$output' exists")
+            }
           }
-          context.delete(output, true)
         }
 
         val filename = FilenameUtils.getName(file)
@@ -163,20 +176,36 @@ trait ExportCommand[DS <: DataStore] extends DataStoreCommand[DS]
         ExportJob.configure(job, connection, sft, hints, filename, output, options.format, options.headers,
           chunks, options.gzip, reducers, libjars(options.format), libjarsPaths)
 
-        JobRunner.run(job, StatusCallback(), ExportJob.Counters.mapping(job), ExportJob.Counters.reducing(job))
-
-        (output.toString, Some(ExportJob.Counters.count(job)))
+        val reporter = TerminalCallback()
+        JobRunner.run(job, reporter, ExportJob.Counters.mapping(job), ExportJob.Counters.reducing(job)).merge {
+          Some(JobSuccess(s"Feature export complete to $output", Map(CountKey -> ExportJob.Counters.count(job))))
+        }
 
       case _ => throw new NotImplementedError() // someone added a run mode and didn't implement it here...
     }
   }
 
-  protected def export(ds: DS, query: Query, exporter: FeatureExporter): Option[Long] = {
+  /**
+   * Hook for overriding export
+   *
+   * @param ds data store
+   * @param query query
+   * @param exporter exporter
+   * @param writeEmptyFiles export empty files or no
+   * @return
+   */
+  protected def export(ds: DS, query: Query, exporter: FeatureExporter, writeEmptyFiles: Boolean): Option[Long] = {
     try {
       Command.user.info("Running export - please wait...")
       val features = ds.getFeatureSource(query.getTypeName).getFeatures(query)
-      exporter.start(features.getSchema)
-      WithClose(CloseableIterator(features.features()))(exporter.export)
+      WithClose(CloseableIterator(features.features())) { iter =>
+        if (writeEmptyFiles || iter.hasNext) {
+          exporter.start(features.getSchema)
+          exporter.export(iter)
+        } else {
+          Some(0L)
+        }
+      }
     } catch {
       case NonFatal(e) =>
         throw new RuntimeException("Could not execute export query. Please ensure " +
@@ -211,6 +240,8 @@ object ExportCommand extends LazyLogging {
   import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleFeatureType
 
   import scala.collection.JavaConverters._
+
+  private val CountKey = "count"
 
   /**
     * Create the query to execute
@@ -280,6 +311,11 @@ object ExportCommand extends LazyLogging {
       }
       val order = if (params.sortDescending) { SortOrder.DESCENDING } else { SortOrder.ASCENDING }
       query.setSortBy(fields.map(f => org.locationtech.geomesa.filter.ff.sort(f, order)).toArray)
+    } else if (hints.isArrowQuery) {
+      hints.getArrowSort.foreach { case (f, r) =>
+        val order = if (r) { SortOrder.DESCENDING } else { SortOrder.ASCENDING }
+        query.setSortBy(Array(org.locationtech.geomesa.filter.ff.sort(f, order)))
+      }
     }
 
     logger.debug(s"Applying CQL filter ${ECQL.toCQL(filter)}")
@@ -342,44 +378,36 @@ object ExportCommand extends LazyLogging {
   class Exporter(options: ExportOptions, hints: Hints, dictionaries: => Map[String, Array[AnyRef]])
       extends FeatureExporter {
 
-    private val name = options.file.orNull
-
-    // lowest level - keep track of the bytes we write
-    // do this before any compression, buffering, etc so we get an accurate count
-    private lazy val counter = {
-      val base = if (name == null) { System.out } else {
-        PathUtils.getHandle(name).write(CreateMode.Create, createParents = true)
-      }
-      new OutputStreamCounter(base)
+    // used only for streaming export formats
+    private lazy val stream = {
+      // avro compression is handled differently, see AvroExporter below
+      val gzip = options.gzip.filter(_ => options.format != ExportFormat.Avro)
+      new LazyExportStream(options.file, gzip)
     }
 
-    private lazy val stream = {
-      val base = counter.stream
-      // disable compressing the output stream for avro, as it's handled by the avro writer
-      val compressed = options.gzip.filter(_ => options.format != ExportFormat.Avro) match {
-        case None => base
-        case Some(c) => new GZIPOutputStream(base) { `def`.setLevel(c) } // hack to access the protected deflate level
-      }
-      new BufferedOutputStream(compressed)
+    // used only for file-based export formats
+    private lazy val name = options.file.getOrElse {
+      // should have been validated already...
+      throw new IllegalStateException("Export format requires a file but none was specified")
     }
 
     // noinspection ComparingUnrelatedTypes
     private lazy val fids = !Option(hints.get(QueryHints.ARROW_INCLUDE_FID)).contains(java.lang.Boolean.FALSE)
 
     private val exporter = options.format match {
-      case ExportFormat.Arrow   => new ArrowExporter(stream, counter, hints, dictionaries)
-      case ExportFormat.Avro    => new AvroExporter(stream, counter, options.gzip)
-      case ExportFormat.Bin     => new BinExporter(stream, counter, hints)
-      case ExportFormat.Csv     => DelimitedExporter.csv(stream, counter, options.headers, fids)
-      case ExportFormat.Gml2    => GmlExporter.gml2(stream, counter)
-      case ExportFormat.Gml3    => GmlExporter(stream, counter)
-      case ExportFormat.Json    => new GeoJsonExporter(stream, counter)
-      case ExportFormat.Leaflet => new LeafletMapExporter(stream, counter)
+      case ExportFormat.Arrow   => new ArrowExporter(stream, hints, dictionaries)
+      case ExportFormat.Avro    => new AvroExporter(stream, options.gzip)
+      case ExportFormat.Bin     => new BinExporter(stream, hints)
+      case ExportFormat.Csv     => DelimitedExporter.csv(stream, options.headers, fids)
+      case ExportFormat.Gml2    => GmlExporter.gml2(stream)
+      case ExportFormat.Gml3    => GmlExporter(stream)
+      case ExportFormat.Json    => new GeoJsonExporter(stream)
+      case ExportFormat.Leaflet => new LeafletMapExporter(stream)
       case ExportFormat.Null    => NullExporter
       case ExportFormat.Orc     => new OrcFileSystemExporter(name)
       case ExportFormat.Parquet => new ParquetFileSystemExporter(name)
       case ExportFormat.Shp     => new ShapefileExporter(new File(name))
-      case ExportFormat.Tsv     => DelimitedExporter.tsv(stream, counter, options.headers, fids)
+      case ExportFormat.Tsv     => DelimitedExporter.tsv(stream, options.headers, fids)
       // shouldn't happen unless someone adds a new format and doesn't implement it here
       case _ => throw new NotImplementedError(s"Export for '${options.format}' is not implemented")
     }
@@ -444,12 +472,13 @@ object ExportCommand extends LazyLogging {
       }
       exporter = new Exporter(options.copy(file = names.next), hints, queriedDictionaries)
       exporter.start(sft)
-      count = 0
+      count = 0L
     }
 
     @tailrec
     private def export(features: Iterator[SimpleFeature], result: Option[Long]): Option[Long] = {
-      val counter = features.take(estimator.estimate(exporter.bytes)).map { f => count += 1; f }
+      var estimate = estimator.estimate(exporter.bytes)
+      val counter = features.takeWhile { _ => count += 1; estimate -= 1; estimate >= 0 }
       val exported = exporter.export(counter) match {
         case None    => result
         case Some(c) => result.map(_ + c).orElse(Some(c))
@@ -476,60 +505,10 @@ object ExportCommand extends LazyLogging {
   }
 
   /**
-    * Estimates how many features to write to create a file of a target size
-    *
-    * @param target target file size, in bytes
-    * @param error acceptable percent error for file size, in bytes
-    * @param estimatedBytesPerFeature initial estimate for bytes per feature
-    */
-  class FileSizeEstimator(target: Long, error: Float, estimatedBytesPerFeature: Float) extends LazyLogging {
-
-    require(error >= 0 && error < 1f, "Error must be a percentage between [0,1)")
-
-    private val threshold = math.round(target * error.toDouble)
-    private var estimate = estimatedBytesPerFeature.toDouble
-
-    /**
-      * Estimate how many features to write to hit our target size
-      *
-      * @param written number of bytes written so far
-      * @return
-      */
-    def estimate(written: Long): Int = {
-      val e = math.round((target - written) / estimate)
-      if (e < 1) { 1 } else if (e.isValidInt) { e.intValue() } else { Int.MaxValue}
-    }
-
-    /**
-      * Re-evaluate the bytes per feature, based on having written out a certain number of features
-      *
-      * @param size size of the file created
-      * @param count number of features written to the file
-      */
-    def update(size: Long, count: Long): Unit = {
-      if (size > 0 && count > 0 && math.abs(size - target) > threshold) {
-        val update = size.toDouble / count
-        logger.debug(s"Updating bytesPerFeature from $estimate to $update based on writing $count features in $size bytes")
-        estimate = update
-      } else {
-        logger.debug(s"Not updating bytesPerFeature from $estimate based on writing $count features in $size bytes")
-      }
-    }
-
-    /**
-      * Checks if the bytes written is (at least) within the error threshold of the desired size
-      *
-      * @param size size of the file created
-      * @return
-      */
-    def done(size: Long): Boolean = size > target || math.abs(size - target) < threshold
-  }
-
-  /**
     * Export parameters
     */
-  trait ExportParams extends OptionalCqlFilterParam
-      with QueryHintsParams with DistributedRunParam with TypeNameParam with OptionalForceParam {
+  trait ExportParams extends OptionalCqlFilterParam with QueryHintsParams
+      with DistributedRunParam with TypeNameParam with NumReducersParam with OptionalForceParam {
     @Parameter(names = Array("-o", "--output"), description = "Output to a file instead of std out")
     var file: String = _
 
@@ -540,6 +519,11 @@ object ExportCommand extends LazyLogging {
       names = Array("--no-header"),
       description = "Export as a delimited text format (csv|tsv) without a type header")
     var noHeader: Boolean = false
+
+    @Parameter(
+      names = Array("--suppress-empty"),
+      description = "Suppress all output (headers, etc) if there are no features exported")
+    var suppressEmpty: Boolean = false
 
     @Parameter(
       names = Array("-m", "--max-features"),
@@ -565,12 +549,6 @@ object ExportCommand extends LazyLogging {
       description = "Sort in descending order, instead of ascending",
       arity = 0)
     var sortDescending: Boolean = false
-
-    @Parameter(
-      names = Array("--num-reducers"),
-      description = "Number of reducers to use when sorting or merging (for distributed export)",
-      validateWith = classOf[PositiveInteger])
-    var reducers: java.lang.Integer = _
 
     @Parameter(
       names = Array("--chunk-size"),

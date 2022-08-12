@@ -2,12 +2,17 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <artifactId>geomesa-geojson_2.11</artifactId>
         <version>2.4.3-SNAPSHOT</version>
+=======
+        <artifactId>geomesa-geojson_2.12</artifactId>
+        <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>geomesa-geojson-rest_2.11</artifactId>
+    <artifactId>geomesa-geojson-rest_2.12</artifactId>
     <name>GeoMesa GeoJSON REST Servlet</name>
 
     <dependencyManagement>
@@ -30,6 +35,10 @@
         <dependency>
             <groupId>org.locationtech.geomesa</groupId>
             <artifactId>geomesa-web-core_${scala.binary.version}</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.geomesa</groupId>
+            <artifactId>geomesa-accumulo-datastore_${scala.binary.version}</artifactId>
         </dependency>
 
         <!-- provided deps -->
@@ -57,6 +66,15 @@
         <dependency>
             <groupId>org.scalatra</groupId>
             <artifactId>scalatra-specs2_${scala.binary.version}</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.locationtech.geomesa</groupId>
+            <artifactId>geomesa-accumulo-datastore_${scala.binary.version}</artifactId>
+            <classifier>tests</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.accumulo</groupId>
+            <artifactId>accumulo-minicluster</artifactId>
         </dependency>
 
     </dependencies>

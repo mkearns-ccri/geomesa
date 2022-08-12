@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -10,12 +10,12 @@ package org.locationtech.geomesa.utils.uuid
 
 import java.util.{Date, UUID}
 
-import com.google.common.primitives.{Bytes, Longs, Shorts}
 import com.typesafe.scalalogging.LazyLogging
-import org.locationtech.jts.geom.{Geometry, Point}
 import org.locationtech.geomesa.curve.TimePeriod.TimePeriod
 import org.locationtech.geomesa.curve.{BinnedTime, Z3SFC}
 import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleFeatureType
+import org.locationtech.geomesa.utils.index.ByteArrays
+import org.locationtech.jts.geom.{Geometry, Point}
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 
 import scala.util.hashing.MurmurHash3
@@ -53,6 +53,8 @@ class Z3FeatureIdGenerator extends FeatureIdGenerator {
  */
 object Z3UuidGenerator extends RandomLsbUuidGenerator with LazyLogging {
 
+  import org.locationtech.geomesa.utils.geotools.Conversions.RichGeometry
+
   private val NullGeom = "Cannot meaningfully index a feature with a NULL geometry"
 
   /**
@@ -66,20 +68,19 @@ object Z3UuidGenerator extends RandomLsbUuidGenerator with LazyLogging {
     * @return
     */
   def createUuid(sft: SimpleFeatureType, sf: SimpleFeature): UUID = {
-    val time = sft.getDtgIndex.flatMap(i => Option(sf.getAttribute(i)).map(_.asInstanceOf[Date].getTime))
-        .getOrElse(System.currentTimeMillis())
-
-    val pt = sf.getAttribute(sft.getGeomIndex)
-    if (pt == null) {
-      throw new IllegalArgumentException(NullGeom)
+    val (x, y) = sf.getAttribute(sft.getGeomIndex) match {
+      case null => throw new IllegalArgumentException(NullGeom)
+      case g: Geometry if g.isEmpty => (0d, 0d)
+      case p: Point => (p.getX, p.getY)
+      case g: Geometry => val p = g.safeCentroid(); (p.getX, p.getY)
     }
+    val time =
+      sft.getDtgIndex
+          .flatMap(i => Option(sf.getAttribute(i)))
+          .map(_.asInstanceOf[Date].getTime)
+          .getOrElse(System.currentTimeMillis())
 
-    if (sft.isPoints) {
-      createUuid(pt.asInstanceOf[Point], time, sft.getZ3Interval)
-    } else {
-      import org.locationtech.geomesa.utils.geotools.Conversions.RichGeometry
-      createUuid(pt.asInstanceOf[Geometry].safeCentroid(), time, sft.getZ3Interval)
-    }
+    createUuid(x, y, time, sft.getZ3Interval)
   }
 
   /**
@@ -91,39 +92,57 @@ object Z3UuidGenerator extends RandomLsbUuidGenerator with LazyLogging {
     * @return
     */
   def createUuid(geom: Geometry, time: Long, period: TimePeriod): UUID = {
-    import org.locationtech.geomesa.utils.geotools.Conversions.RichGeometry
-
     if (geom == null) {
       throw new IllegalArgumentException(NullGeom)
+    } else if (geom.isEmpty) {
+      createUuid(0, 0, time, period)
+    } else {
+      val pt = geom.safeCentroid()
+      createUuid(pt.getX, pt.getY, time, period)
     }
-    createUuid(geom.safeCentroid(), time, period)
   }
 
+
   /**
-    * Create a UUID based on the raw values that make up the z3, optimized for point geometries
-    *
-    * @param pt point
-    * @param time millis since java epoch
-    * @param period z3 time period
-    * @return
-    */
+   * Create a UUID based on the raw values that make up the z3, optimized for point geometries
+   *
+   * @param pt point
+   * @param time millis since java epoch
+   * @param period z3 time period
+   * @return
+   */
   def createUuid(pt: Point, time: Long, period: TimePeriod): UUID = {
     if (pt == null) {
       throw new IllegalArgumentException(NullGeom)
+    } else if (pt.isEmpty) {
+      createUuid(0, 0, time, period)
+    } else {
+      createUuid(pt.getX, pt.getY, time, period)
     }
+  }
 
+  /**
+   * Create a UUID based on the raw values that make up the z3, optimized for point geometries
+   *
+   * @param x x coord
+   * @param y y coord
+   * @param time millis since java epoch
+   * @param period z3 time period
+   * @return
+   */
+  def createUuid(x: Double, y: Double, time: Long, period: TimePeriod): UUID = {
     // create the random part
     // this uses the same temp array we use later, so be careful with the order this gets called
     val leastSigBits = createRandomLsb()
 
     val z3 = {
       val BinnedTime(b, t) = BinnedTime.timeToBinnedTime(period)(time)
-      val z = Z3SFC(period).index(pt.getX, pt.getY, t).z
-      Bytes.concat(Shorts.toByteArray(b), Longs.toByteArray(z))
+      val z = Z3SFC(period).index(x, y, t)
+      ByteArrays.toBytes(b, z)
     }
 
     // shard is first 4 bits of our uuid (e.g. 1 hex char) - this allows nice pre-splitting
-    val shard = math.abs(MurmurHash3.bytesHash(z3) % 16).toByte
+    val shard = math.abs(MurmurHash3.bytesHash(z3, MurmurHash3.arraySeed) % 16).toByte
 
     val msb = getTempByteArray
     // set the shard bits, then the z3 bits
@@ -141,7 +160,7 @@ object Z3UuidGenerator extends RandomLsbUuidGenerator with LazyLogging {
     // set the UUID version - we skipped those bits when writing
     setVersion(msb)
     // create the long
-    val mostSigBits = Longs.fromByteArray(msb)
+    val mostSigBits = ByteArrays.readLong(msb)
 
     new UUID(mostSigBits, leastSigBits)
   }
@@ -164,7 +183,7 @@ object Z3UuidGenerator extends RandomLsbUuidGenerator with LazyLogging {
     */
   def timeBin(b0: Byte, b1: Byte, b2: Byte): Short = {
     // undo the lo-hi byte merging to get the two bytes for the time period
-    Shorts.fromBytes(lohi(b0, b1), lohi(b1, b2))
+    ByteArrays.readShort(Array(lohi(b0, b1), lohi(b1, b2)))
   }
 
   // takes 4 low bits from b1 as the new hi bits, and 4 high bits of b2 as the new low bits, of a new byte

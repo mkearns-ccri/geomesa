@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -20,7 +20,7 @@ import scala.collection.mutable.ArrayBuffer
   * Based on 'XZ-Ordering: A Space-Filling Curve for Objects with Spatial Extension'
   * by Christian Böhm, Gerald Klump  and Hans-Peter Kriegel, expanded to 3 dimensions
   *
-  * @param g resolution level of the curve - i.e. how many times the space will be recursively quartered
+  * @param g resolution level of the curve - i.e. how many times the space will be recursively split into eighths
 
   */
 class XZ3SFC(val g: Short, val xBounds: (Double, Double), val yBounds: (Double, Double), val zBounds: (Double, Double)) {

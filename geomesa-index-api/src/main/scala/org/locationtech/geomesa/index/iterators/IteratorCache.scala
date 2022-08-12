@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -29,8 +29,16 @@ import org.opengis.filter.Filter
   */
 object IteratorCache extends StrictLogging {
 
+<<<<<<< HEAD
   private val expiry = SystemProperty("geomesa.filter.remote.cache.expiry", "10 minutes").toDuration.get
 
+=======
+  // force evaluation of accessor cache while setting the context classloader to pick up our custm accessors
+  org.locationtech.geomesa.utils.geotools.SimpleFeaturePropertyAccessor.initialize()
+
+  private val expiry = SystemProperty("geomesa.filter.remote.cache.expiry", "10 minutes").toDuration.get
+
+>>>>>>> main
   // thread safe object caches
   private val serializerCache: Cache[(String, String), KryoFeatureSerializer] =
     Caffeine.newBuilder().expireAfterAccess(expiry.toMillis, TimeUnit.MILLISECONDS).build()

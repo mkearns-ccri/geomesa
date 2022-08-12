@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,23 +8,17 @@
 
 package org.locationtech.geomesa.utils.zk
 
-import java.nio.charset.StandardCharsets
-
-import org.apache.curator.framework.CuratorFrameworkFactory
-import org.apache.curator.retry.ExponentialBackoffRetry
 import org.locationtech.geomesa.index.metadata.{KeyValueStoreMetadata, MetadataSerializer}
 import org.locationtech.geomesa.utils.collection.CloseableIterator
+
+import java.nio.charset.StandardCharsets
 
 class ZookeeperMetadata[T](val namespace: String, val zookeepers: String, val serializer: MetadataSerializer[T])
     extends KeyValueStoreMetadata[T] {
 
   import org.locationtech.geomesa.utils.zk.ZookeeperMetadata.Root
 
-  private val client = CuratorFrameworkFactory.builder()
-      .namespace(namespace)
-      .connectString(zookeepers)
-      .retryPolicy(new ExponentialBackoffRetry(1000, 3))
-      .build()
+  private val client = CuratorHelper.client(zookeepers).namespace(namespace).build()
   client.start()
 
   override protected def checkIfTableExists: Boolean = true
@@ -61,7 +55,6 @@ class ZookeeperMetadata[T](val namespace: String, val zookeepers: String, val se
   }
 
   override protected def scanRows(prefix: Option[Array[Byte]]): CloseableIterator[(Array[Byte], Array[Byte])] = {
-    import scala.collection.JavaConversions._
     val path = prefix.map(toPath(_, withSlash = false))
     if (client.checkExists().forPath(Root) == null) { CloseableIterator.empty } else {
       val all = CloseableIterator(client.getChildren.forPath(Root).iterator)

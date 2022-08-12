@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -61,9 +61,10 @@ object RedisQueryPlan {
   def explain(plan: RedisQueryPlan, explainer: Explainer, prefix: String): Unit = {
     explainer.pushLevel(s"${prefix}Plan: ${plan.getClass.getSimpleName}")
     explainer(s"Tables: ${plan.tables.mkString(", ")}")
-    explainer(s"ECQL: ${plan.ecql.map(filterToString).getOrElse("None")}")
+    explainer(s"ECQL: ${plan.ecql.map(filterToString).getOrElse("none")}")
     explainer(s"Ranges (${plan.ranges.size}): ${plan.ranges.take(5).map(rangeToString).mkString(", ")}")
     plan.explain(explainer)
+    explainer(s"Reduce: ${plan.reducer.getOrElse("none")}")
     explainer.popLevel()
   }
 
@@ -107,7 +108,7 @@ object RedisQueryPlan {
     override def scan(ds: RedisDataStore): CloseableIterator[Array[Byte]] = {
       val iter = tables.iterator.map(_.getBytes(StandardCharsets.UTF_8))
       val scans = iter.map(singleTableScan(ds, _))
-      if (PartitionParallelScan.toBoolean.contains(true)) {
+      if (ds.config.queries.parallelPartitionScans) {
         // kick off all the scans at once
         scans.foldLeft(CloseableIterator.empty[Array[Byte]])(_ ++ _)
       } else {
@@ -132,7 +133,7 @@ object RedisQueryPlan {
         }
         result.result.iterator.flatMap(_.get.iterator().asScala)
       } else {
-        RedisBatchScan(ds.connection, table, ranges, ds.config.queryThreads)
+        RedisBatchScan(ds.connection, table, ranges, ds.config.queries.threads)
       }
     }
   }

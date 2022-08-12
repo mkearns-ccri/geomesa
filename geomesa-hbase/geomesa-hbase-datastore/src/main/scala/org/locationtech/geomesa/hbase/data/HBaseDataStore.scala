@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -16,10 +16,15 @@ import org.apache.hadoop.hbase.filter.FilterList
 import org.apache.hadoop.hbase.security.visibility.Authorizations
 import org.apache.hadoop.hbase.zookeeper.ZKConfig
 import org.geotools.data.Query
+<<<<<<< HEAD
 import org.locationtech.geomesa.hbase.coprocessor.GeoMesaCoprocessor
 import org.locationtech.geomesa.hbase.coprocessor.aggregators.HBaseVersionAggregator
+=======
+import org.locationtech.geomesa.hbase.aggregators.HBaseVersionAggregator
+>>>>>>> main
 import org.locationtech.geomesa.hbase.data.HBaseConnectionPool.ConnectionWrapper
 import org.locationtech.geomesa.hbase.data.HBaseDataStoreFactory.HBaseDataStoreConfig
+import org.locationtech.geomesa.hbase.rpc.coprocessor.GeoMesaCoprocessor
 import org.locationtech.geomesa.index.geotools.GeoMesaDataStore
 import org.locationtech.geomesa.index.index.attribute.AttributeIndex
 import org.locationtech.geomesa.index.index.id.IdIndex
@@ -28,6 +33,8 @@ import org.locationtech.geomesa.index.index.z3.{XZ3Index, Z3Index}
 import org.locationtech.geomesa.index.metadata.{GeoMesaMetadata, MetadataStringSerializer}
 import org.locationtech.geomesa.index.stats.{GeoMesaStats, RunnableStats}
 import org.locationtech.geomesa.index.utils._
+import org.locationtech.geomesa.security.AuthorizationsProvider
+import org.locationtech.geomesa.utils.concurrent.CachedThreadPool
 import org.locationtech.geomesa.utils.conf.IndexId
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.AttributeOptions
 import org.locationtech.geomesa.utils.io.WithClose
@@ -54,7 +61,6 @@ class HBaseDataStore(con: ConnectionWrapper, override val config: HBaseDataStore
   override val stats: GeoMesaStats = new RunnableStats(this)
 
   // zookeeper locking
-  override protected val mock: Boolean = false
   override protected val zookeepers: String = ZKConfig.getZKQuorumServersString(connection.getConfiguration)
 
   override def getQueryPlan(query: Query, index: Option[String], explainer: Explainer): Seq[HBaseQueryPlan] =
@@ -79,10 +85,14 @@ class HBaseDataStore(con: ConnectionWrapper, override val config: HBaseDataStore
             val name = TableName.valueOf(table)
             if (connection.getAdmin.tableExists(name)) {
               val options = HBaseVersionAggregator.configure(sft, index)
-              WithClose(connection.getTable(name)) { t =>
-                WithClose(GeoMesaCoprocessor.execute(t, new Scan().setFilter(new FilterList()), options)) { bytes =>
+              val scan = new Scan().setFilter(new FilterList())
+              val pool = new CachedThreadPool(config.coprocessors.threads)
+              try {
+                WithClose(GeoMesaCoprocessor.execute(connection, name, scan, options, pool)) { bytes =>
                   bytes.map(_.toStringUtf8).toList.iterator // force evaluation of the iterator before closing it
                 }
+              } finally {
+                pool.shutdown()
               }
             } else {
               Iterator.empty
@@ -157,15 +167,21 @@ class HBaseDataStore(con: ConnectionWrapper, override val config: HBaseDataStore
     }
   }
 
-  private def authOpt: Option[Authorizations] =
-    config.authProvider.map { provider =>
-      val auths = provider.getAuthorizations
+  private def authOpt: Option[Authorizations] = {
+    Option(config.authProvider.getAuthorizations).map { auths =>
       // HBase seems to treat and empty collection as no auths
       // which forces it to default to the user's full set of auths
       new Authorizations(if (auths.isEmpty) { HBaseDataStore.EmptyAuths } else { auths })
     }
+  }
 }
 
 object HBaseDataStore {
+
   val EmptyAuths: java.util.List[String] = Collections.singletonList("")
+
+  object NoAuthsProvider extends AuthorizationsProvider {
+    override def getAuthorizations: java.util.List[String] = null
+    override def configure(params: java.util.Map[String, _ <: java.io.Serializable]): Unit = {}
+  }
 }

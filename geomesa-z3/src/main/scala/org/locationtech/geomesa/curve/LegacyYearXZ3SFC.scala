@@ -1,5 +1,9 @@
 /***********************************************************************
+<<<<<<< HEAD
  * Copyright (c) 2013-2020 Commonwealth Computer Research, Inc.
+=======
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
+>>>>>>> main
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -15,7 +19,11 @@ import java.time.temporal.ChronoUnit
  * index keys and query ranges are consistent. Any dates that exceed the original max time will be dropped into
  * the last time bin, potentially degrading results for the last day or two of the year.
  *
+<<<<<<< HEAD
  * @param g resolution level of the curve - i.e. how many times the space will be recursively quartered
+=======
+ * @param g resolution level of the curve - i.e. how many times the space will be recursively split into eighths
+>>>>>>> main
  */
 @deprecated("XZ3SFC", "3.2.0")
 class LegacyYearXZ3SFC(g: Short)

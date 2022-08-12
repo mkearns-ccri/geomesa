@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -26,6 +26,8 @@ class EmbeddedKafka extends Closeable {
   private val server = {
     val config = TestUtils.createBrokerConfig(1, zookeepers)
     config.setProperty("offsets.topic.num.partitions", "1")
+    config.setProperty("transaction.state.log.replication.factor", "1")
+    config.setProperty("transaction.state.log.min.isr", "1")
     config.setProperty("listeners", s"PLAINTEXT://127.0.0.1:${TestUtils.RandomPort}")
     config.setProperty("log.dirs", logs.getAbsolutePath)
     config.setProperty("delete.topic.enable", "true")

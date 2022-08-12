@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -16,8 +16,8 @@ class GeoMesaIStringConverterFactory extends IStringConverterFactory {
 
   import GeoMesaIStringConverterFactory.ConverterMap
 
-  override def getConverter[T](forType: Class[T]): Class[_ <: IStringConverter[T]] =
-    ConverterMap.getOrElse(forType, null).asInstanceOf[Class[IStringConverter[T]]]
+  override def getConverter(forType: Class[_]): Class[_ <: IStringConverter[_]] =
+    ConverterMap.getOrElse(forType, null)
 }
 
 object GeoMesaIStringConverterFactory {

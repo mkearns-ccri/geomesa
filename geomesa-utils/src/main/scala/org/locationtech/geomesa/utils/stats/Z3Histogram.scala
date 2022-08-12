@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,12 +11,12 @@ package org.locationtech.geomesa.utils.stats
 import java.util.Date
 
 import com.typesafe.scalalogging.LazyLogging
-import org.locationtech.jts.geom.{Coordinate, Geometry, Point}
 import org.geotools.geometry.jts.JTSFactoryFinder
 import org.locationtech.geomesa.curve.TimePeriod.TimePeriod
 import org.locationtech.geomesa.curve.{BinnedTime, TimePeriod, Z3SFC}
+import org.locationtech.geomesa.utils.stats.BinnedArray.LongBinning
 import org.locationtech.geomesa.utils.stats.MinMax.MinMaxGeometry
-import org.locationtech.sfcurve.zorder.Z3
+import org.locationtech.jts.geom.{Coordinate, Geometry, Point}
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 
 /**
@@ -43,19 +43,14 @@ class Z3Histogram(
 
   override type S = Z3Histogram
 
-  @deprecated("geom")
-  lazy val geomIndex: Int = g
-  @deprecated("dtg")
-  lazy val dtgIndex: Int = d
-
   private val g = sft.indexOf(geom)
   private val d = sft.indexOf(dtg)
 
   private val sfc = Z3SFC(period)
   private val timeToBin = BinnedTime.timeToBinnedTime(period)
   private val binToDate = BinnedTime.binnedTimeToDate(period)
-  private val minZ = sfc.index(minGeom.getX, minGeom.getY, sfc.time.min.toLong).z
-  private val maxZ = sfc.index(maxGeom.getX, maxGeom.getY, sfc.time.max.toLong).z
+  private val minZ = sfc.index(minGeom.getX, minGeom.getY, sfc.time.min.toLong)
+  private val maxZ = sfc.index(maxGeom.getX, maxGeom.getY, sfc.time.max.toLong)
 
   private lazy val jsonFormat = period match {
     case TimePeriod.Day   => s"$period-%05d"
@@ -64,8 +59,8 @@ class Z3Histogram(
     case TimePeriod.Year  => s"$period-%02d"
   }
 
-  private [stats] val binMap = scala.collection.mutable.Map.empty[Short, BinnedLongArray]
-  private [stats] def newBins = new BinnedLongArray(length, (minZ, maxZ))
+  private [stats] val binMap = scala.collection.mutable.Map.empty[Short, BinnedArray[java.lang.Long]]
+  private [stats] def newBins = new BinnedArray(new LongBinning(length, (minZ, maxZ)))
 
   def timeBins: Seq[Short] = binMap.keys.toSeq.sorted
   def count(timeBin: Short, i: Int): Long = binMap.get(timeBin).map(_.counts(i)).getOrElse(0L)
@@ -83,12 +78,12 @@ class Z3Histogram(
     import org.locationtech.geomesa.utils.geotools.Conversions.RichGeometry
     val BinnedTime(bin, offset) = timeToBin(dtg.getTime)
     val centroid = geom.safeCentroid()
-    val z = sfc.index(centroid.getX, centroid.getY, offset, lenient).z
+    val z = sfc.index(centroid.getX, centroid.getY, offset, lenient)
     (bin, z)
   }
 
   private def fromKey(timeBin: Short, z: Long): (Geometry, Date) = {
-    val (x, y, t) = sfc.invert(new Z3(z))
+    val (x, y, t) = sfc.invert(z)
     val dtg = Date.from(binToDate(BinnedTime(timeBin, t)).toInstant)
     val geom = Z3Histogram.gf.createPoint(new Coordinate(x, y))
     (geom, dtg)

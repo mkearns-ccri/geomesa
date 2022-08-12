@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -56,11 +56,11 @@ class FeatureToFeatureConverterFactory extends SimpleFeatureConverterFactory wit
         config.copy(idField = Some(Expression.Column(inputSft.getAttributeCount)))
       }
 
-      // add transform expressions to look up the attribute attribute
+      // add transform expressions to look up the attribute
       val columns = fields.map { field =>
         field.transforms match {
           case None => field.copy(transforms = Some(Expression.Column(inputSft.indexOf(field.name))))
-          case Some(Expression.FieldLookup(n)) => field.copy(transforms = Some(Expression.Column(inputSft.indexOf(n))))
+          case Some(Expression.FieldLookup(n, _)) => field.copy(transforms = Some(Expression.Column(inputSft.indexOf(n))))
           case _ => field
         }
       }

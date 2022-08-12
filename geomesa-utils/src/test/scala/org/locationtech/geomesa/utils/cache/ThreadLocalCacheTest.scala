@@ -1,5 +1,9 @@
 /***********************************************************************
+<<<<<<< HEAD
  * Copyright (c) 2013-2020 Commonwealth Computer Research, Inc.
+=======
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
+>>>>>>> main
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -10,6 +14,10 @@ package org.locationtech.geomesa.utils.cache
 
 import java.util.concurrent.{ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
+<<<<<<< HEAD
+=======
+import com.github.benmanes.caffeine.cache.Ticker
+>>>>>>> main
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.utils.io.WithClose
 import org.mockito.ArgumentMatchers
@@ -57,11 +65,22 @@ class ThreadLocalCacheTest extends Specification with Mockito {
       val future = mock[ScheduledFuture[Unit]]
       es.scheduleWithFixedDelay(ArgumentMatchers.any(), ArgumentMatchers.eq(100L),
         ArgumentMatchers.eq(100L), ArgumentMatchers.eq(TimeUnit.MILLISECONDS)) returns future
+<<<<<<< HEAD
       WithClose(new ThreadLocalCache[String, String](100.millis, es)) { cache =>
         there was one(es).scheduleWithFixedDelay(cache, 100, 100, TimeUnit.MILLISECONDS)
         cache.put("k1", "v1")
         cache.get("k1") must beSome("v1")
         eventually(10, 100.millis)(cache.get("k1") must beNone)
+=======
+      var nanos = 0L
+      val ticker = new Ticker() { override def read(): Long = nanos }
+      WithClose(new ThreadLocalCache[String, String](100.millis, es, Some(ticker))) { cache =>
+        there was one(es).scheduleWithFixedDelay(cache, 100, 100, TimeUnit.MILLISECONDS)
+        cache.put("k1", "v1")
+        cache.get("k1") must beSome("v1")
+        nanos = 200L * 1000000
+        cache.get("k1") must beNone
+>>>>>>> main
       }
       there was one(future).cancel(true)
     }
@@ -71,11 +90,22 @@ class ThreadLocalCacheTest extends Specification with Mockito {
       val future = mock[ScheduledFuture[Unit]]
       es.scheduleWithFixedDelay(ArgumentMatchers.any(), ArgumentMatchers.eq(100L),
         ArgumentMatchers.eq(100L), ArgumentMatchers.eq(TimeUnit.MILLISECONDS)) returns future
+<<<<<<< HEAD
       WithClose(new ThreadLocalCache[String, String](100.millis, es)) { cache =>
         there was one(es).scheduleWithFixedDelay(cache, 100, 100, TimeUnit.MILLISECONDS)
         cache.put("k1", "v1")
         cache.get("k1") must beSome("v1")
         eventually(10, 100.millis)(cache.get("k1") must beNone)
+=======
+      var nanos = 0L
+      val ticker = new Ticker() { override def read(): Long = nanos }
+      WithClose(new ThreadLocalCache[String, String](100.millis, es, Some(ticker))) { cache =>
+        there was one(es).scheduleWithFixedDelay(cache, 100, 100, TimeUnit.MILLISECONDS)
+        cache.put("k1", "v1")
+        cache.get("k1") must beSome("v1")
+        nanos = 200L * 1000000
+        cache.get("k1") must beNone
+>>>>>>> main
         cache.getOrElseUpdate("k1", "v2") mustEqual "v2"
         cache.get("k1") must beSome("v2")
         cache("k1") mustEqual "v2"

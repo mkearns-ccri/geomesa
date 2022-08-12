@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -28,7 +28,7 @@ object FeatureUtils {
   // sourced from the following:
   //   https://github.com/geotools/geotools/blob/master/modules/library/cql/src/main/jjtree/ECQLGrammar.jjt
   //   http://docs.geotools.org/latest/userguide/library/cql/internal.html
-  val ReservedWords = HashSet(
+  val ReservedWords: Set[String] = HashSet(
     "AFTER",
     "AND",
     "BEFORE",
@@ -50,7 +50,6 @@ object FeatureUtils {
     "IS",
     "LIKE",
     "LINESTRING",
-    "LOCATION",
     "MULTILINESTRING",
     "MULTIPOINT",
     "MULTIPOLYGON",
@@ -112,14 +111,22 @@ object FeatureUtils {
 
   def copyToWriter(writer: FeatureWriter[SimpleFeatureType, SimpleFeature],
                    sf: SimpleFeature,
-                   useProvidedFid: Boolean = false): SimpleFeature =
+                   useProvidedFid: Boolean = false): SimpleFeature = {
     copyToFeature(writer.next(), sf, useProvidedFid)
+  }
 
   def copyToFeature(toWrite: SimpleFeature, sf: SimpleFeature, useProvidedFid: Boolean = false): SimpleFeature = {
-    toWrite.setAttributes(sf.getAttributes)
+    var i = 0
+    while (i < sf.getAttributeCount) {
+      toWrite.setAttribute(i, sf.getAttribute(i))
+      i += 1
+    }
     toWrite.getUserData.putAll(sf.getUserData)
     if (useProvidedFid || jBoolean.TRUE == sf.getUserData.get(Hints.USE_PROVIDED_FID).asInstanceOf[jBoolean]) {
-      toWrite.getIdentifier.asInstanceOf[FeatureIdImpl].setID(sf.getID)
+      toWrite.getIdentifier match {
+        case id: FeatureIdImpl => id.setID(sf.getID)
+        case _ => toWrite.getUserData.put(Hints.PROVIDED_FID, sf.getID)
+      }
       toWrite.getUserData.put(Hints.USE_PROVIDED_FID, java.lang.Boolean.TRUE)
     }
     toWrite

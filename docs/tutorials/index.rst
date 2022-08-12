@@ -25,7 +25,6 @@ Installation
 .. toctree::
     :maxdepth: 1
 
-    geodocker-geomesa/index
     geomesa-hbase-s3-on-aws
     geomesa-hbase-on-cdh
     geomesa-fs-on-azure
@@ -39,10 +38,7 @@ Data In/Out
     geomesa-examples-gdelt
     geomesa-examples-transformations
     geomesa-examples-avro
-    geomesa-blobstore
-    geomesa-blobstore-exif
     geomesa-quickstart-storm
-    geomesa-raster
 
 .. _tutorials_analytics:
 

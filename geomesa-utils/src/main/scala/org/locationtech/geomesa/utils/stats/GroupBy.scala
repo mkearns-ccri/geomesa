@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -17,17 +17,13 @@ class GroupBy[T](val sft: SimpleFeatureType, val property: String, val stat: Str
 
   override type S = GroupBy[T]
 
-  @deprecated("property")
-  lazy val attribute: Int = i
-  @deprecated("stat")
-  lazy val exampleStat: String = stat
-
   private val i = sft.indexOf(property)
   private [stats] val groups = scala.collection.mutable.Map.empty[T, Stat]
 
   def size: Int = groups.size
   def get(key: T): Option[Stat] = groups.get(key)
   def getOrElse[U >: Stat](key: T, default: => U): U = groups.getOrElse(key, default)
+  def iterator: Iterator[(T, Stat)] = groups.iterator
 
   private def buildNewStat: Stat = StatParser.parse(sft, stat)
 

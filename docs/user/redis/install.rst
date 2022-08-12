@@ -1,25 +1,36 @@
 Installing GeoMesa Redis
 ========================
 
+.. note::
+
+    GeoMesa currently supports Redis version |redis_version|.
+
+.. note::
+
+    The examples below expect a version to be set in the environment:
+
+    .. parsed-literal::
+
+        $ export TAG="|release_version|"
+        # note: |scala_binary_version| is the Scala build version
+        $ export VERSION="|scala_binary_version|-${TAG}"
+
 Installing the Binary Distribution
 ----------------------------------
 
 GeoMesa Redis artifacts are available for download or can be built from source.
-The easiest way to get started is to download the most recent binary version
-(|release|) from `GitHub`__.
+The easiest way to get started is to download the most recent binary version from `GitHub`__.
 
 __ https://github.com/locationtech/geomesa/releases
 
-Extract it somewhere convenient:
+Download and extract it somewhere convenient:
 
 .. code-block:: bash
 
     # download and unpackage the most recent distribution:
-    $ wget "https://github.com/locationtech/geomesa/releases/download/geomesa_2.11-$VERSION/geomesa-redis_2.11-$VERSION-bin.tar.gz"
-    $ tar xvf geomesa-redis_2.11-$VERSION-bin.tar.gz
-    $ cd geomesa-redis_2.11-$VERSION
-    $ ls
-    bin/  conf/  dist/  docs/  examples/  lib/  LICENSE.txt  logs/
+    $ wget "https://github.com/locationtech/geomesa/releases/download/geomesa-${TAG}/geomesa-redis_${VERSION}-bin.tar.gz"
+    $ tar xvf geomesa-redis_${VERSION}-bin.tar.gz
+    $ cd geomesa-redis_${VERSION}
 
 .. _redis_install_source:
 
@@ -40,11 +51,7 @@ Setting up the Redis Command Line Tools
 ---------------------------------------
 
 GeoMesa comes with a set of command line tools for managing Redis features located in
-``geomesa-redis_2.11-$VERSION/bin/`` of the binary distribution.
-
-If desired, you may use the included script ``bin/geomesa-redis configure`` to help set up the environment variables
-used by the tools. Otherwise, you may invoke the ``geomesa-redis`` script using the fully-qualified path, and
-use the default configuration.
+``geomesa-redis_${VERSION}/bin/`` of the binary distribution.
 
 .. note::
 
@@ -52,9 +59,12 @@ use the default configuration.
 
 Test the command that invokes the GeoMesa Tools:
 
-.. code::
+.. code-block:: bash
 
-    $ bin/geomesa-redis
+    $ ./bin/geomesa-redis
+
+The output should look like this::
+
     INFO  Usage: geomesa-redis [command] [command options]
       Commands:
       ...
@@ -62,12 +72,11 @@ Test the command that invokes the GeoMesa Tools:
 For more details on the available commands, see :ref:`redis_tools`.
 
 Due to licensing restrictions, dependencies for shape file support must be separately installed.
-Install them with the following scripts:
+Do this with the following command:
 
 .. code-block:: bash
 
-    $ bin/install-jai.sh
-    $ bin/install-jline.sh
+    $ ./bin/install-shapefile-support.sh
 
 Use the ``geomesa-redis classpath`` command in order to see what JARs are being used.
 
@@ -90,7 +99,7 @@ Installing GeoMesa Redis in GeoServer
     See :ref:`geoserver_versions` to ensure that GeoServer is compatible with your GeoMesa version.
 
 The Redis GeoServer plugin is bundled by default in a GeoMesa binary distribution. To install, extract
-``$GEOMESA_REDIS_HOME/dist/gs-plugins/geomesa-redis-gs-plugin_2.11-$VERSION-install.tar.gz`` into GeoServer's
+``$GEOMESA_REDIS_HOME/dist/gs-plugins/geomesa-redis-gs-plugin_${VERSION}-install.tar.gz`` into GeoServer's
 ``WEB-INF/lib`` directory.
 
 Restart GeoServer after the JARs are installed. See :doc:`/user/redis/geoserver` for details on configuring stores

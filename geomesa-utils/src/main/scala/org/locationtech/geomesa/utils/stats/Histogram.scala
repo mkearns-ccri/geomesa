@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -13,10 +13,12 @@ import java.util.Date
 import com.typesafe.scalalogging.LazyLogging
 import org.locationtech.jts.geom.{Coordinate, Geometry}
 import org.locationtech.geomesa.utils.geotools.GeometryUtils
+import org.locationtech.geomesa.utils.stats.BinnedArray.Binning
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 
 import scala.collection.immutable.ListMap
 import scala.reflect.ClassTag
+import scala.util.Try
 
 /**
   * The histogram's state is stored in an indexed array, where the index is the bin number
@@ -42,9 +44,6 @@ class Histogram[T](
   ) extends Stat with LazyLogging {
 
   override type S = Histogram[T]
-
-  @deprecated("property")
-  lazy val attribute: Int = i
 
   private val i = sft.indexOf(property)
   private [stats] var bins: BinnedArray[T] = BinnedArray[T](initialBins, initialEndpoints)
@@ -190,7 +189,7 @@ object Histogram {
     * @return valid bounds for a histogram
     */
   def buffer[T](value: T): (T, T) = {
-    import BinnedStringArray.{Base36Lowest, Base36Highest}
+    import org.locationtech.geomesa.utils.stats.BinnedArray.StringBinning.{Base36Lowest, Base36Highest}
     val buf = value match {
       case v: Int    => (v - 100, v + 100)
       case v: Long   => (v - 100, v + 100)
@@ -207,6 +206,18 @@ object Histogram {
     }
     buf.asInstanceOf[(T, T)]
   }
+
+  /**
+   * Checks if 2 values map to the same bin
+   *
+   * @param o1 object 1
+   * @param o2 object 2
+   * @param bins number of binds
+   * @tparam T type binding
+   * @return
+   */
+  def equivalent[T: ClassTag](o1: T, o2: T, bins: Int): Boolean =
+     Try(Binning(bins, (o1, o2))).isFailure // this will fail if the two values map to the same bin
 
   /**
     * Creates a new binned array that encompasses the new value.

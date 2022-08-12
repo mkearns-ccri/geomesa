@@ -3,12 +3,17 @@
 
     <parent>
         <groupId>org.locationtech.geomesa</groupId>
+<<<<<<< HEAD
         <artifactId>geomesa-accumulo_2.11</artifactId>
         <version>2.4.3-SNAPSHOT</version>
+=======
+        <artifactId>geomesa-accumulo_2.12</artifactId>
+        <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>geomesa-accumulo-tools_2.11</artifactId>
+    <artifactId>geomesa-accumulo-tools_2.12</artifactId>
     <name>GeoMesa Accumulo Tools</name>
 
     <properties>
@@ -39,10 +44,6 @@
         <dependency>
             <groupId>org.locationtech.geomesa</groupId>
             <artifactId>geomesa-filter_${scala.binary.version}</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.locationtech.geomesa</groupId>
-            <artifactId>geomesa-accumulo-raster_${scala.binary.version}</artifactId>
         </dependency>
         <dependency>
             <groupId>org.locationtech.geomesa</groupId>
@@ -77,14 +78,6 @@
         </dependency>
         <dependency>
             <groupId>org.geotools</groupId>
-            <artifactId>gt-geojson</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.json4s</groupId>
-            <artifactId>json4s-native_${scala.binary.version}</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.geotools</groupId>
             <artifactId>gt-xml</artifactId>
         </dependency>
         <dependency>
@@ -94,7 +87,6 @@
         <dependency>
             <groupId>org.apache.zookeeper</groupId>
             <artifactId>zookeeper</artifactId>
-            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>com.beust</groupId>
@@ -135,6 +127,10 @@
             <artifactId>geomesa-accumulo-datastore_${scala.binary.version}</artifactId>
             <classifier>tests</classifier>
         </dependency>
+        <dependency>
+            <groupId>org.apache.accumulo</groupId>
+            <artifactId>accumulo-minicluster</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
@@ -168,7 +164,7 @@
                         <argument>org.locationtech.geomesa.accumulo.tools.AccumuloRunner</argument>
                         <argument>help</argument>
                         <argument>--autocomplete-function</argument>
-                        <argument>${project.build.directory}/autocomplete.sh,geomesa</argument>
+                        <argument>${project.build.directory}/autocomplete.sh,geomesa-accumulo</argument>
                     </arguments>
                 </configuration>
             </plugin>

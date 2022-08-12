@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -28,13 +28,24 @@ import org.opengis.filter.expression.Expression
 
 trait DensityScan extends AggregatingScan[DensityScanResult] {
 
+<<<<<<< HEAD
+=======
+  // we snap each point into a pixel and aggregate based on that
+  protected var renderer: GeometryRenderer = _
+
+>>>>>>> main
   override protected def createResult(
       sft: SimpleFeatureType,
       transform: Option[SimpleFeatureType],
       batchSize: Int,
       options: Map[String, String]): DensityScanResult = {
+<<<<<<< HEAD
     // we snap each point into a pixel and aggregate based on that
     val renderer = DensityScan.getRenderer(sft, options.get(DensityScan.Configuration.WeightOpt))
+=======
+    val geom = options.getOrElse(DensityScan.Configuration.GeometryOpt, sft.getGeometryDescriptor.getLocalName)
+    val renderer = DensityScan.getRenderer(sft, geom, options.get(DensityScan.Configuration.WeightOpt))
+>>>>>>> main
     val bounds = options(DensityScan.Configuration.EnvelopeOpt).split(",").map(_.toDouble)
     val envelope = new Envelope(bounds(0), bounds(1), bounds(2), bounds(3))
     val Array(width, height) = options(DensityScan.Configuration.GridOpt).split(",").map(_.toInt)
@@ -59,6 +70,7 @@ object DensityScan extends LazyLogging {
 
   // configuration keys
   object Configuration {
+    val GeometryOpt = "geom"
     val EnvelopeOpt = "envelope"
     val GridOpt     = "grid"
     val WeightOpt   = "weight"
@@ -70,15 +82,18 @@ object DensityScan extends LazyLogging {
       filter: Option[Filter],
       hints: Hints): Map[String, String] = {
     import AggregatingScan.{OptionToConfig, StringToConfig}
-    import Configuration.{EnvelopeOpt, GridOpt, WeightOpt}
 
+    val geom = getDensityGeometry(sft, hints)
     val envelope = hints.getDensityEnvelope.get
     val (width, height) = hints.getDensityBounds.get
-    val base = AggregatingScan.configure(sft, index, filter, None, hints.getSampling) // note: don't pass transforms
+    val batchSize = DensityScan.BatchSize.toInt.get // has a valid default so should be safe to .get
+    // note: don't pass transforms
+    val base = AggregatingScan.configure(sft, index, filter, None, hints.getSampling, batchSize)
     base ++ AggregatingScan.optionalMap(
-      EnvelopeOpt -> s"${envelope.getMinX},${envelope.getMaxX},${envelope.getMinY},${envelope.getMaxY}",
-      GridOpt     -> s"$width,$height",
-      WeightOpt   -> hints.getDensityWeight
+      Configuration.GeometryOpt -> geom,
+      Configuration.EnvelopeOpt -> s"${envelope.getMinX},${envelope.getMaxX},${envelope.getMinY},${envelope.getMaxY}",
+      Configuration.GridOpt     -> s"$width,$height",
+      Configuration.WeightOpt   -> hints.getDensityWeight
     )
   }
 
@@ -136,17 +151,20 @@ object DensityScan extends LazyLogging {
     * @return
     */
   def propertyNames(hints: Hints, sft: SimpleFeatureType): Seq[String] = {
+    val geom = hints.getDensityGeometry.getOrElse(sft.getGeomField)
     val weight = hints.getDensityWeight.map(ECQL.toExpression)
-    (Seq(sft.getGeomField) ++ weight.toSeq.flatMap(FilterHelper.propertyNames(_, sft))).distinct
+    (Seq(geom) ++ weight.toSeq.flatMap(FilterHelper.propertyNames(_, sft))).distinct
   }
 
   /**
-    * Gets a renderer for the associated geometry binding
-    *
-    * @param sft simple feature type
-    * @return
-    */
-  def getRenderer(sft: SimpleFeatureType, weight: Option[String]): GeometryRenderer = {
+   * Gets a renderer for the associated geometry binding
+   *
+   * @param sft simple feature type
+   * @param geom geometry field to render
+   * @param weight field to use for weighting features
+   * @return
+   */
+  def getRenderer(sft: SimpleFeatureType, geom: String, weight: Option[String]): GeometryRenderer = {
     // function to get the weight from the feature - defaults to 1.0 unless an attribute/exp is specified
     val weigher = weight match {
       case None => EqualWeight
@@ -161,17 +179,36 @@ object DensityScan extends LazyLogging {
         }
     }
 
-    sft.getGeometryDescriptor.getType.getBinding match {
-      case b if b == classOf[Point]           => new PointRenderer(sft.getGeomIndex, weigher)
-      case b if b == classOf[MultiPoint]      => new MultiPointRenderer(sft.getGeomIndex, weigher)
-      case b if b == classOf[LineString]      => new LineStringRenderer(sft.getGeomIndex, weigher)
-      case b if b == classOf[MultiLineString] => new MultiLineStringRenderer(sft.getGeomIndex, weigher)
-      case b if b == classOf[Polygon]         => new PolygonRenderer(sft.getGeomIndex, weigher)
-      case b if b == classOf[MultiPolygon]    => new MultiPolygonRenderer(sft.getGeomIndex, weigher)
-      case _                                  => new MultiRenderer(sft.getGeomIndex, weigher)
+    val i = sft.indexOf(geom)
+    sft.getDescriptor(i).getType.getBinding match {
+      case b if b == classOf[Point]           => new PointRenderer(i, weigher)
+      case b if b == classOf[MultiPoint]      => new MultiPointRenderer(i, weigher)
+      case b if b == classOf[LineString]      => new LineStringRenderer(i, weigher)
+      case b if b == classOf[MultiLineString] => new MultiLineStringRenderer(i, weigher)
+      case b if b == classOf[Polygon]         => new PolygonRenderer(i, weigher)
+      case b if b == classOf[MultiPolygon]    => new MultiPolygonRenderer(i, weigher)
+      case _                                  => new MultiRenderer(i, weigher)
     }
   }
 
+<<<<<<< HEAD
+=======
+  /**
+   * Get the geometry to render and validate it against the feature type
+   *
+   * @param sft simple feature type
+   * @param hints query hints
+   * @return
+   */
+  def getDensityGeometry(sft: SimpleFeatureType, hints: Hints): String = {
+    val geom = hints.getDensityGeometry.getOrElse(sft.getGeomField)
+    require(
+      sft.indexOf(geom) != -1 && classOf[Geometry].isAssignableFrom(sft.getDescriptor(geom).getType.getBinding),
+      s"Invalid geometry field: $geom")
+    geom
+  }
+
+>>>>>>> main
   class DensityScanResult(renderer: GeometryRenderer, grid: RenderingGrid) extends AggregatingScan.Result {
 
     override def init(): Unit = {}

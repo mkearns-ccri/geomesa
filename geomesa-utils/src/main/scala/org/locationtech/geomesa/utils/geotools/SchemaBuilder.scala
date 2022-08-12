@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,7 +8,6 @@
 
 package org.locationtech.geomesa.utils.geotools
 
-import com.google.common.primitives.Primitives
 import org.locationtech.geomesa.curve.TimePeriod.TimePeriod
 import org.locationtech.geomesa.utils.geotools.SchemaBuilder.{AbstractSchemaBuilder, AttributeBuilder, UserDataBuilder}
 import org.locationtech.geomesa.utils.geotools.sft.SimpleFeatureSpec
@@ -328,7 +327,20 @@ object SchemaBuilder {
     protected def createAttributeBuilder(spec: StringBuilder): A
     protected def createUserDataBuilder(userData: StringBuilder): U
 
-    private def classy[T: ClassTag]: Class[_] = Primitives.wrap(classTag[T].runtimeClass)
+    private def classy[T: ClassTag]: Class[_] = {
+      classTag[T].runtimeClass match {
+        case java.lang.Byte.TYPE      => classOf[java.lang.Byte]
+        case java.lang.Short.TYPE     => classOf[java.lang.Short]
+        case java.lang.Character.TYPE => classOf[java.lang.Character]
+        case java.lang.Integer.TYPE   => classOf[java.lang.Integer]
+        case java.lang.Long.TYPE      => classOf[java.lang.Long]
+        case java.lang.Float.TYPE     => classOf[java.lang.Float]
+        case java.lang.Double.TYPE    => classOf[java.lang.Double]
+        case java.lang.Boolean.TYPE   => classOf[java.lang.Boolean]
+        case java.lang.Void.TYPE      => classOf[java.lang.Void]
+        case c                        => c
+      }
+    }
 
     private def geom(name: String, binding: String, default: Boolean): String =
       if (default) { s"*$name:$binding:srid=4326" } else { s"$name:$binding:srid=4326" }
@@ -443,6 +455,28 @@ object SchemaBuilder {
       * @return user data builder for chaining calls
       */
     def zShards(shards: Int): U = userData(Configs.IndexZShards, shards.toString)
+
+    /**
+     * Specify the number of shards to use for the Z2 indices. Shards can provide distribution
+     * across nodes in a cluster, but also require more nodes to be scanned when querying.
+     *
+     * Default value is 4
+     *
+     * @param shards number of shards
+     * @return user data builder for chaining calls
+     */
+    def z2Shards(shards: Int): U = userData(Configs.IndexZ2Shards, shards.toString)
+
+    /**
+     * Specify the number of shards to use for the Z3 indices. Shards can provide distribution
+     * across nodes in a cluster, but also require more nodes to be scanned when querying.
+     *
+     * Default value is 4
+     *
+     * @param shards number of shards
+     * @return user data builder for chaining calls
+     */
+    def z3Shards(shards: Int): U = userData(Configs.IndexZ2Shards, shards.toString)
 
     /**
       * Specify the number of shards to use for the attribute index. Shards can provide distribution

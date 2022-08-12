@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -40,10 +40,6 @@ object FilterHelper {
   }
 
   val ff: FilterFactory2 = org.locationtech.geomesa.filter.ff
-
-  @deprecated("Use org.locationtech.geomesa.filter.GeometryProcessing.process")
-  def visitBinarySpatialOp(op: BinarySpatialOperator, sft: SimpleFeatureType, factory: FilterFactory2): Filter =
-    GeometryProcessing.process(op, sft, factory)
 
   def isFilterWholeWorld(f: Filter): Boolean = f match {
       case op: BBOX       => isOperationGeomWholeWorld(op)
@@ -138,9 +134,6 @@ object FilterHelper {
     }
   }
 
-  @deprecated("Use org.locationtech.geomesa.filter.GeometryProcessing.metersMultiplier")
-  def metersMultiplier(units: String): Double = GeometryProcessing.metersMultiplier(units)
-
   /**
     * Extracts intervals from a filter. Intervals will be merged where possible - the resulting sequence
     * is considered to be a union (i.e. OR)
@@ -157,6 +150,7 @@ object FilterHelper {
                        handleExclusiveBounds: Boolean = false): FilterValues[Bounds[ZonedDateTime]] = {
     extractAttributeBounds(filter, attribute, classOf[Date]).map { bounds =>
       var lower, upper: Bound[ZonedDateTime] = null
+      // this if check determines if rounding will be used and if we need to account for narrow ranges
       if (!handleExclusiveBounds || bounds.lower.value.isEmpty || bounds.upper.value.isEmpty ||
           (bounds.lower.inclusive && bounds.upper.inclusive)) {
         lower = createDateTime(bounds.lower, roundSecondsUp, handleExclusiveBounds)
@@ -205,12 +199,16 @@ object FilterHelper {
   def extractAttributeBounds[T](filter: Filter, attribute: String, binding: Class[T]): FilterValues[Bounds[T]] = {
     filter match {
       case o: Or =>
-        val all = o.getChildren.flatMap { f =>
-          val child = extractAttributeBounds(f, attribute, binding)
-          if (child.isEmpty) { Seq.empty } else { Seq(child) }
-        }
         val union = FilterValues.or[Bounds[T]](Bounds.union[T]) _
-        all.reduceLeftOption[FilterValues[Bounds[T]]](union).getOrElse(FilterValues.empty)
+        o.getChildren.map(f =>
+          extractAttributeBounds(f, attribute, binding)
+        ).reduceLeft[FilterValues[Bounds[T]]]((acc, child) => {
+          if (acc.isEmpty || child.isEmpty) {
+            FilterValues.empty
+          } else {
+            union(acc, child)
+          }
+        })
 
       case a: And =>
         val all = a.getChildren.flatMap { f =>
@@ -532,8 +530,13 @@ object FilterHelper {
         val clauses = decomposed.head // Seq(1,2,3)
         val duplicates = clauses.filter(c => decomposed.tail.forall(_.contains(c))) // Seq(1,2)
         if (duplicates.isEmpty) { or } else {
-          val deduplicated = orOption(decomposed.flatMap(d => andOption(d.filterNot(duplicates.contains))))
-          andFilters(deduplicated.toSeq ++ duplicates)
+          val simplified = decomposed.flatMap(d => andOption(d.filterNot(duplicates.contains)))
+          if (simplified.length < decomposed.length) {
+            // the duplicated filters are an entire clause, so we can ignore the rest of the clauses
+            andFilters(duplicates)
+          } else {
+            andFilters(orOption(simplified).toSeq ++ duplicates)
+          }
         }
 
       case _ => f

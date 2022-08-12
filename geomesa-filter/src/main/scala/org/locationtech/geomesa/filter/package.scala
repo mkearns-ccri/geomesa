@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,6 +8,7 @@
 
 package org.locationtech.geomesa
 
+import org.geotools.data.DataUtilities
 import org.geotools.factory.CommonFactoryFinder
 import org.geotools.filter.text.ecql.ECQL
 import org.locationtech.geomesa.filter.expression.AttributeExpression
@@ -247,10 +248,6 @@ package object filter {
     filters.partition(isTemporal)
   }
 
-  @deprecated("Deprecated with no replacement")
-  def partitionIndexedAttributes(filters: Seq[Filter], sft: SimpleFeatureType): PartionedFilter =
-    filters.partition(isIndexedAttributeFilter(_, sft))
-
   def partitionID(filter: Filter): (Seq[Filter], Seq[Filter]) = partitionSubFilters(filter, isIdFilter)
 
   def isIdFilter(f: Filter): Boolean = f.isInstanceOf[Id]
@@ -288,16 +285,6 @@ package object filter {
     import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleFeatureType
     sft.getDtgField.exists(isTemporalFilter(f, _))
   }
-
-  @deprecated("Replaced with org.locationtech.geomesa.index.index.attribute.AttributeIndex.indexed")
-  def attrIndexed(name: String, sft: SimpleFeatureType): Boolean = {
-    import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleFeatureType
-    sft.getIndices.exists(_.attributes.headOption.contains(name))
-  }
-
-  @deprecated("Deprecated with no replacement")
-  def isIndexedAttributeFilter(f: Filter, sft: SimpleFeatureType): Boolean =
-    getAttributeProperty(f).exists(attrIndexed(_, sft))
 
   def getAttributeProperty(f: Filter): Option[String] = {
     f match {
@@ -428,8 +415,8 @@ package object filter {
 
       case (f1: Function, f2: Function) =>
         (attribute(f1), attribute(f2)) match {
-          case (Some(a), None) => Some(FunctionLiteral(a, f1, ff.literal(f2.evaluate(null))))
-          case (None, Some(a)) => Some(FunctionLiteral(a, f2, ff.literal(f1.evaluate(null))))
+          case (Some(a), None) => Some(FunctionLiteral(a, f1, ff.literal(f2.evaluate(null)), flipped = false))
+          case (None, Some(a)) => Some(FunctionLiteral(a, f2, ff.literal(f1.evaluate(null)), flipped = true))
           case _ => None
         }
 
@@ -452,5 +439,5 @@ package object filter {
   }
 
   private def attribute(f: Function): Option[String] =
-    f.getParameters.collectFirst { case p: PropertyName => p.getPropertyName }
+    f.getParameters.map(DataUtilities.attributeNames(_).headOption).collectFirst { case Some(p) => p }
 }

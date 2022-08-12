@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -9,21 +9,23 @@
 package org.locationtech.geomesa
 
 import org.apache.arrow.memory.{BufferAllocator, RootAllocator}
-import org.locationtech.geomesa.arrow.vector.SimpleFeatureVector.SimpleFeatureEncoding
-import org.locationtech.geomesa.features.serialization.ObjectType.ObjectType
 import org.locationtech.geomesa.utils.conf.GeoMesaSystemProperties.SystemProperty
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
 import org.locationtech.geomesa.utils.io.CloseWithLogging
 import org.opengis.feature.simple.SimpleFeatureType
 
-package object arrow {
+import scala.collection.JavaConverters._
 
+<<<<<<< HEAD
   @deprecated("Use ArrowAllocator.apply() and clean up afterwards")
   implicit lazy val allocator: BufferAllocator = {
     val root = new RootAllocator(Long.MaxValue)
     sys.addShutdownHook(CloseWithLogging(root))
     root
   }
+=======
+package object arrow {
+>>>>>>> main
 
   // need to be lazy to avoid class loading issues before init is called
   lazy val ArrowEncodedSft: SimpleFeatureType =
@@ -45,11 +47,34 @@ package object arrow {
      * @return
      */
     def apply(name: String): BufferAllocator = root.newChildAllocator(name, 0L, Long.MaxValue)
+<<<<<<< HEAD
+  }
+
+  object ArrowProperties {
+    val BatchSize: SystemProperty = SystemProperty("geomesa.arrow.batch.size", "10000")
+=======
+
+    def getAllocatedMemory(typeName: String): Long =
+      root.getChildAllocators.asScala
+        .filter( a => a.getName.endsWith(s":$typeName"))
+        .map(_.getAllocatedMemory)
+        .sum
+
+    /**
+     * Forwards the getAllocatedMemory from the root Arrow Allocator
+     * @return the number of bytes allocated off-heap by Arrow
+     */
+    def getAllocatedMemory: Long = root.getAllocatedMemory
+
+    /**
+     * Forwards the getPeakMemoryAllocation from the root Arrow Allocator
+     * @return the peak number of bytes allocated off-heap by Arrow
+     */
+    def getPeakMemoryAllocation: Long = root.getPeakMemoryAllocation
+>>>>>>> main
   }
 
   object ArrowProperties {
     val BatchSize: SystemProperty = SystemProperty("geomesa.arrow.batch.size", "10000")
   }
-
-  case class TypeBindings(bindings: Seq[ObjectType], encoding: SimpleFeatureEncoding)
 }

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,14 +11,13 @@ package org.locationtech.geomesa.kudu.data
 import java.awt.RenderingHints
 import java.io.Serializable
 import java.nio.charset.StandardCharsets
-
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kudu.client.KuduClient
 import org.geotools.data.DataAccessFactory.Param
 import org.geotools.data.{DataStore, DataStoreFactorySpi}
-import org.locationtech.geomesa.index.geotools.GeoMesaDataStoreFactory.{GeoMesaDataStoreConfig, GeoMesaDataStoreInfo, GeoMesaDataStoreParams}
+import org.locationtech.geomesa.index.geotools.GeoMesaDataStoreFactory.{DataStoreQueryConfig, GeoMesaDataStoreConfig, GeoMesaDataStoreInfo, GeoMesaDataStoreParams}
 import org.locationtech.geomesa.kudu.KuduSystemProperties.{AdminOperationTimeout, OperationTimeout, SocketReadTimeout}
-import org.locationtech.geomesa.kudu.data.KuduDataStoreFactory.KuduDataStoreConfig
+import org.locationtech.geomesa.kudu.data.KuduDataStoreFactory.{KuduDataStoreConfig, KuduQueryConfig}
 import org.locationtech.geomesa.security
 import org.locationtech.geomesa.security.AuthorizationsProvider
 import org.locationtech.geomesa.utils.audit.{AuditLogger, AuditProvider, AuditWriter, NoOpAuditProvider}
@@ -45,20 +44,19 @@ class KuduDataStoreFactory extends DataStoreFactorySpi {
       security.getAuthorizationsProvider(params, auths)
     }
 
-    val caching = CachingParam.lookup(params)
-
     val catalog = CatalogParam.lookup(params)
 
-    val looseBBox = LooseBBoxParam.lookup(params)
-
-    // not used but required for config inheritance
-    val queryThreads = QueryThreadsParam.lookup(params)
-    val queryTimeout = QueryTimeoutParam.lookupOpt(params).map(_.toMillis)
+    val queries = KuduQueryConfig(
+      threads = QueryThreadsParam.lookup(params),
+      timeout = QueryTimeoutParam.lookupOpt(params).map(_.toMillis),
+      looseBBox = LooseBBoxParam.lookup(params),
+      caching = CachingParam.lookup(params),
+      parallelPartitionScans = PartitionParallelScansParam.lookup(params)
+    )
 
     val ns = Option(NamespaceParam.lookUp(params).asInstanceOf[String])
 
-    val cfg = KuduDataStoreConfig(catalog, generateStats, authProvider, audit, caching,
-      queryThreads, queryTimeout, looseBBox, ns)
+    val cfg = KuduDataStoreConfig(catalog, generateStats, authProvider, audit, queries, ns)
 
     new KuduDataStore(client, cfg)
   }
@@ -82,7 +80,7 @@ object KuduDataStoreFactory extends GeoMesaDataStoreInfo with LazyLogging {
   override val DisplayName = "Kudu (GeoMesa)"
   override val Description = "Apache Kudu\u2122 columnar store"
 
-  override val ParameterInfo: Array[GeoMesaParam[_]] =
+  override val ParameterInfo: Array[GeoMesaParam[_ <: AnyRef]] =
     Array(
       Params.KuduMasterParam,
       Params.CatalogParam,
@@ -96,7 +94,8 @@ object KuduDataStoreFactory extends GeoMesaDataStoreInfo with LazyLogging {
       Params.AuditQueriesParam,
       Params.GenerateStatsParam,
       Params.StatisticsParam,
-      Params.CachingParam
+      Params.CachingParam,
+      Params.PartitionParallelScansParam
     )
 
   override def canProcess(params: java.util.Map[String, _ <: java.io.Serializable]): Boolean =
@@ -112,37 +111,43 @@ object KuduDataStoreFactory extends GeoMesaDataStoreInfo with LazyLogging {
         "kudu.master",
         "Kudu master host[:port][,host2[:port2]...]",
         optional = false,
-        supportsNiFiExpressions = true)
+        supportsNiFiExpressions = true
+      )
 
     val CatalogParam =
       new GeoMesaParam[String](
         "kudu.catalog",
         "Name of GeoMesa catalog table",
         optional = false,
-        supportsNiFiExpressions = true)
+        supportsNiFiExpressions = true
+      )
 
     val CredentialsParam =
       new GeoMesaParam[String](
         "kudu.credentials",
         "Kudu client authentication credentials",
-        supportsNiFiExpressions = true)
+        supportsNiFiExpressions = true
+      )
 
     val WorkerThreadsParam =
       new GeoMesaParam[Integer](
         "kudu.worker.threads",
         "Number of worker threads",
-        supportsNiFiExpressions = true)
+        supportsNiFiExpressions = true
+      )
 
     val BossThreadsParam =
       new GeoMesaParam[Integer](
         "kudu.boss.threads",
         "Number of boss threads",
-        supportsNiFiExpressions = true)
+        supportsNiFiExpressions = true
+      )
 
     val StatisticsParam =
       new GeoMesaParam[java.lang.Boolean](
         "kudu.client.stats.disable",
-        "Disable Kudu client statistics")
+        "Disable Kudu client statistics"
+      )
 
     val AuthsParam = org.locationtech.geomesa.security.AuthsParam
   }
@@ -175,13 +180,20 @@ object KuduDataStoreFactory extends GeoMesaDataStoreInfo with LazyLogging {
     client
   }
 
-  case class KuduDataStoreConfig(catalog: String,
-                                 generateStats: Boolean,
-                                 authProvider: AuthorizationsProvider,
-                                 audit: Option[(AuditWriter, AuditProvider, String)],
-                                 caching: Boolean,
-                                 queryThreads: Int,
-                                 queryTimeout: Option[Long],
-                                 looseBBox: Boolean,
-                                 namespace: Option[String]) extends GeoMesaDataStoreConfig
+  case class KuduDataStoreConfig(
+      catalog: String,
+      generateStats: Boolean,
+      authProvider: AuthorizationsProvider,
+      audit: Option[(AuditWriter, AuditProvider, String)],
+      queries: KuduQueryConfig,
+      namespace: Option[String]
+    ) extends GeoMesaDataStoreConfig
+
+  case class KuduQueryConfig(
+      threads: Int,
+      timeout: Option[Long],
+      looseBBox: Boolean,
+      caching: Boolean,
+      parallelPartitionScans: Boolean
+    ) extends DataStoreQueryConfig
 }

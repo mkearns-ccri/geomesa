@@ -1,6 +1,10 @@
 GeoMesa GeoJSON
 ===============
 
+.. warning::
+
+   The GeoMesa GeoJSON API is deprecated and will be removed in a future version.
+
 GeoMesa provides built-in integration with GeoJSON. GeoMesa provides a GeoJSON API that allows for the
 indexing and querying of GeoJSON data. The GeoJSON API does not use GeoTools - all data and operations
 are pure JSON. The API also includes a REST endpoint for web integration.
@@ -128,7 +132,7 @@ GeoMesa ``DataStore``. The module is available through maven:
 
         <dependency>
             <groupId>org.locationtech.geomesa</groupId>
-            <artifactId>geomesa-geojson-api_2.11</artifactId>
+            <artifactId>geomesa-geojson-api_2.12</artifactId>
             <version>1.3.0</version>
         </dependency>
 
@@ -175,7 +179,7 @@ in GeoServer by extracting the install file into ``geoserver/WEB-INF/lib``:
 
 .. code-block:: bash
 
-    $ tar -xf geomesa-geojson/geomesa-geojson-gs-plugin/target/geomesa-geojson-gs-plugin_2.11-$VERSION-install.tar.gz -C <dest>
+    $ tar -xf geomesa-geojson/geomesa-geojson-gs-plugin/target/geomesa-geojson-gs-plugin_2.12-$VERSION-install.tar.gz -C <dest>
 
 Note that this also requires the AccumuloDataStore to be installed. See :ref:`install_accumulo_geoserver`.
 
@@ -250,7 +254,6 @@ Registers a data store to make it available for querying.
 |                 | **Optional**                                                                         |
 |                 |                                                                                      |
 |                 | * ``geomesa.security.auths=[alphanumeric]``                                          |
-|                 | * ``geomesa.security.visibilities=[alphanumeric]``                                   |
 |                 | * ``geomesa.query.timeout=[alphanumeric]``                                           |
 |                 | * ``geomesa.query.threads=[integer]``                                                |
 |                 | * ``accumulo.query.record-threads=[integer]``                                        |
@@ -260,7 +263,6 @@ Registers a data store to make it available for querying.
 |                 | * ``geomesa.query.audit=[Boolean]``                                                  |
 |                 | * ``geomesa.query.caching=[Boolean]``                                                |
 |                 | * ``geomesa.security.force-empty-auths=[Boolean]``                                   |
-|                 | * ``accumulo.mock=[Boolean]``                                                        |
 +-----------------+--------------------------------------------------------------------------------------+
 | **Success**     | **Code:** 200                                                                        |
 | **Response**    |                                                                                      |
@@ -716,3 +718,21 @@ Similarly for spaces:
     SimpleFeature sf = ...
     sf.setAttribute("json", "{ \"foo bar\" : \"bar\" }");
     filter.evaluate(sf); // returns true
+
+JSONPath With GeoServer Styles
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When using JSON path in GeoServer styles (SLD or CSS), the attribute and path must be separated out in order for
+the GeoTools renderer to work correctly. In this case, pass in two arguments, the first being a property expression
+in double quotes of the JSON-type attribute name, and the second being the path:
+
+.. code-block:: none
+
+    * {
+      mark: symbol(arrow);
+      mark-size: 12px;
+      mark-rotation: [ jsonPath("json", 'foo') ];
+      :mark {
+        fill: #009900;
+      }
+    }

@@ -90,6 +90,186 @@ Compatibility Matrix
 | Dependencies | N     | N     | Y     |
 +--------------+-------+-------+-------+
 
+Version 3.3.0 Upgrade Guide
++++++++++++++++++++++++++++
+
+Scala Versions
+--------------
+
+GeoMesa NiFi NARs now ship with Scala 2.12 by default. This should be largely transparent to end-users, however
+any custom GeoMesa converter JARs used in NiFi and written in Scala will need to be compiled with Scala 2.12.
+
+Version 3.2.0 Upgrade Guide
++++++++++++++++++++++++++++
+
+Scala Versions
+--------------
+
+GeoMesa now supports Scala 2.12. Scala 2.11 support has been deprecated and will be removed in a future version.
+
+Spark Versions
+--------------
+
+GeoMesa now supports Spark 3.0 and 3.1. Support for Spark 2.3 and 2.4 has been deprecated and will be removed
+in a future version.
+
+Dependency Updates
+------------------
+
+* com.fasterxml.jackson: 2.9.10 -> 2.12.1
+
+FileSystem Data Store Metadata Format Change
+--------------------------------------------
+
+The metadata format for the FileSystem data store has been changed to support storing arbitrary key-value pairs.
+Any data written with version 3.2.0 or later will not be readable by earlier GeoMesa versions.
+
+Lambda Data Store Binary Distribution Change
+--------------------------------------------
+
+The Lambda data store binary distribution no longer contains the ``geomesa-accumulo-distributed-runtime`` JAR.
+This JAR is available in the Accumulo data store binary distribution.
+
+StrategyDecider API Update
+--------------------------
+
+The ``org.locationtech.geomesa.index.planning.StrategyDecider`` API has been extended with an optional
+``GeoMesaStats`` argument that enables stat-based strategy decisions. The old API method has been deprecated
+and will be removed in a future version.
+
+Deprecated Modules
+------------------
+
+The following modules have been deprecated, and will be removed in a future version:
+
+* GeoMesa Kudu
+* GeoMesa Streaming (Camel integration)
+* GeoMesa Web
+* GeoMesa GeoJSON
+
+Deprecated Arrow Output Options
+-------------------------------
+
+The Arrow output options for providing cached dictionaries, returning multiple logical files, and running
+queries in two passes have been deprecated and will be removed in the next major version.
+
+Version 3.1.0 Upgrade Guide
++++++++++++++++++++++++++++
+
+Maven Type of GeoServer Plugin Modules
+--------------------------------------
+
+All of the ``geomesa-*-gs-plugin`` artifacts have been changed to ``<type>pom</type>``, since they did not
+contain any code. Any ``pom.xml`` references to them should be updated to use the correct type.
+
+Avro Version Update
+-------------------
+
+The version of Avro used by GeoMesa has been updated from 1.7.5 to 1.8.2. Avro serialized files should
+be compatible between versions, but compile and runtime dependencies may need to be updated if a project
+uses Avro and references GeoMesa.
+
+Query Interceptors API Change
+-----------------------------
+
+The query interceptors API has been expanded to support query guards. Any existing query interceptor
+implementations will continue to work, but may need to be re-compiled against the GeoMesa 3.1.0.
+
+Dependency Updates
+------------------
+
+* GeoTools: 23.0 -> 23.3
+* Avro: 1.7.5 -> 1.8.2
+
+Version 3.0.0 Upgrade Guide
++++++++++++++++++++++++++++
+
+Removal of Deprecated Modules and Classes
+-----------------------------------------
+
+GeoMesa 3.0.0 removes several lesser-used modules, as well as various obsolete classes and methods.
+
+The modules removed are: ``geomesa-accumulo/geomesa-accumulo-compute``,
+``geomesa-accumulo/geomesa-accumulo-native-api``, ``geomesa-accumulo/geomesa-accumulo-raster-distributed-runtime``,
+``geomesa-accumulo/geomesa-accumulo-raster``, ``geomesa-accumulo/geomesa-accumulo-security``,
+``geomesa-accumulo/geomesa-accumulo-stats-gs-plugin``, ``geomesa-convert/geomesa-convert-scripting``,
+``geomesa-convert/geomesa-convert-simplefeature``, ``geomesa-hbase/geomesa-hbase-native-api``,
+``geomesa-metrics``, ``geomesa-native-api``, ``geomesa-spark/geomesa-spark-geotools``, ``geomesa-blobstore/*``, and
+``geomesa-web/geomesa-web-data``.
+
+The classes and methods removed are detailed in `GEOMESA-2284 <https://geomesa.atlassian.net/browse/GEOMESA-2284>`_.
+
+HBase 2 Support
+---------------
+
+GeoMesa 3.0.0 supports both HBase 1.4 and HBase 2.2. HBase 1.3 is no longer supported. HBase 2.0 and 2.1 are
+not officially supported, but may work in some cases.
+
+There are now two separate modules for HBase filters and coprocessors - ``geomesa-hbase-distributed-runtime-hbase1``
+and ``geomesa-hbase-distributed-runtime-hbase2``. The previous ``geomesa-hbase-distributed-runtime`` module has
+been removed. Users should install the distributed runtime corresponding to their HBase installation.
+
+Similarly, there are now two separate modules for HBase Spark support - ``geomesa-hbase-spark-runtime-hbase1`` and
+``geomesa-hbase-spark-runtime-hbase2``. The previous ``geomesa-hbase-spark-runtime`` module has been removed.
+Users should use the Spark runtime corresponding to their HBase installation.
+
+Accumulo 2 Support
+------------------
+
+GeoMesa 3.0.0 supports both Accumulo 1.9 with Hadoop 2.8 and Accumulo 2.0 with Hadoop 3.
+Earlier versions of Accumulo are no longer supported, but may work in some cases.
+
+There are now two separate modules for Accumulo Spark support - ``geomesa-accumulo-spark-runtime-accumulo1`` and
+``geomesa-accumulo-spark-runtime-accumulo2``. The previous ``geomesa-accumulo-spark-runtime`` module has been removed.
+Users should use the Spark runtime corresponding to their Accumulo installation.
+
+NiFi Processors
+---------------
+
+The GeoMesa NiFi processors have been updated to NiFi 11 and split out into separate ``nar`` files for each
+supported back-end database. Additionally, there are separate ``nar`` files for HBase 1.4/2.2 and Accumulo 1.9/2.0,
+respectively. The processor classes and configurations have also changed. See :ref:`nifi_bundle` for details.
+
+Dependency Updates
+------------------
+
+* Apache Arrow: 0.10 -> 0.16
+
+Apache Arrow Updates
+--------------------
+
+As part of the upgrade to Apache Arrow 0.16, the geomesa-arrow modules have been refactored to simplify memory
+management and allocation. Some classes have been removed, and some interfaces have changed. This may impact
+anyone using the geomesa-arrow modules directly.
+
+The Arrow IPC format changed in Arrow 0.15. Older clients may not be able to read Arrow-encoded results by
+default. To enabled the 'legacy' Arrow IPC format, set the system property ``geomesa.arrow.format.version``
+to ``0.10``, or use the query hint ``ARROW_FORMAT_VERSION``. See :ref:`arrow_encoding` for details.
+
+Converter Date Functions
+------------------------
+
+The converter functions ``isoDate`` and ``isoDateTime`` have been updated to match the equivalent Java
+``DateTimeFormatter`` pattern. ``isoDate`` has changed from ``yyyyMMdd`` to ``yyyy-MM-dd``, while ``isoDateTime``
+has changed from ``yyyyMMdd'T'HHmmss.SSSZ`` to ``yyyy-MM-dd'T'HH:mm:ss``. The old patterns can still be
+referenced through ``basicDate`` and ``basicDateTime``.
+
+AuthorizationsProvider and AuditProvider API Change
+---------------------------------------------------
+
+The signature for ``org.locationtech.geomesa.security.AuthorizationsProvider#configure`` and
+``org.locationtech.geomesa.utils.audit.AuditProvider#configure`` have changed slightly from
+``void configure(Map<String, Serializable> params)`` to
+``public void configure(Map<String, ? extends Serializable> params)``. Any classes implementing either of these
+interfaces will need to update their method signature. Any classes invoking these methods should not need to updated,
+as the new signature is compatible with the old one.
+
+Accumulo Default Visibilities Removed
+-------------------------------------
+
+The Accumulo data store parameter ``geomesa.security.visibilities`` have been removed. Visibilities should be set
+per-feature, as described in :ref:`data_security`.
+
 Version 2.4.0 Upgrade Guide
 +++++++++++++++++++++++++++
 

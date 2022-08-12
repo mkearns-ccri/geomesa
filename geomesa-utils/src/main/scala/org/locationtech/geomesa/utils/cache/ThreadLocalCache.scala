@@ -1,5 +1,9 @@
 /***********************************************************************
+<<<<<<< HEAD
  * Copyright (c) 2013-2020 Commonwealth Computer Research, Inc.
+=======
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
+>>>>>>> main
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -12,8 +16,13 @@ import java.io.Closeable
 import java.lang.ref.WeakReference
 import java.util.concurrent._
 
+<<<<<<< HEAD
 import com.github.benmanes.caffeine.cache.{Cache, Caffeine}
 import com.google.common.util.concurrent.MoreExecutors
+=======
+import com.github.benmanes.caffeine.cache.{Cache, Caffeine, Ticker}
+import org.locationtech.geomesa.utils.concurrent.ExitingExecutor
+>>>>>>> main
 
 import scala.concurrent.duration.Duration
 
@@ -32,7 +41,12 @@ import scala.concurrent.duration.Duration
  */
 class ThreadLocalCache[K <: AnyRef, V <: AnyRef](
     expiry: Duration,
+<<<<<<< HEAD
     executor: ScheduledExecutorService = ThreadLocalCache.executor
+=======
+    executor: ScheduledExecutorService = ThreadLocalCache.executor,
+    ticker: Option[Ticker] = None
+>>>>>>> main
   ) extends scala.collection.mutable.Map[K, V]
     with scala.collection.mutable.MapLike[K, V, ThreadLocalCache[K, V]]
     with Runnable
@@ -45,7 +59,13 @@ class ThreadLocalCache[K <: AnyRef, V <: AnyRef](
 
   private val caches = new ThreadLocal[Cache[K, V]]() {
     override def initialValue(): Cache[K, V] = {
+<<<<<<< HEAD
       val cache = Caffeine.newBuilder().expireAfterAccess(expiry.toMillis, TimeUnit.MILLISECONDS).build[K, V]()
+=======
+      val builder = Caffeine.newBuilder().expireAfterAccess(expiry.toMillis, TimeUnit.MILLISECONDS)
+      ticker.foreach(builder.ticker)
+      val cache = builder.build[K, V]()
+>>>>>>> main
       // this will always succeed as our queue is unbounded
       references.offer((Thread.currentThread().getId, new WeakReference(cache)))
       cache
@@ -140,7 +160,11 @@ class ThreadLocalCache[K <: AnyRef, V <: AnyRef](
 
 object ThreadLocalCache {
   // use a 2 thread executor service for all the caches - we only use a handful across the code base
+<<<<<<< HEAD
   private val executor = MoreExecutors.getExitingScheduledExecutorService {
     Executors.newScheduledThreadPool(2).asInstanceOf[ScheduledThreadPoolExecutor]
   }
+=======
+  private val executor = ExitingExecutor(Executors.newScheduledThreadPool(2).asInstanceOf[ScheduledThreadPoolExecutor])
+>>>>>>> main
 }

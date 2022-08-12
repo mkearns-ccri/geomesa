@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -16,11 +16,10 @@ import org.apache.parquet.schema.PrimitiveType.PrimitiveTypeName
 import org.apache.parquet.schema.Type.Repetition
 import org.apache.parquet.schema.Types.BasePrimitiveBuilder
 import org.apache.parquet.schema._
-import org.locationtech.geomesa.features.serialization.ObjectType
-import org.locationtech.geomesa.features.serialization.ObjectType.ObjectType
 import org.locationtech.geomesa.features.serialization.TwkbSerialization.GeometryBytes
 import org.locationtech.geomesa.fs.storage.common.jobs.StorageConfiguration
-import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
+import org.locationtech.geomesa.utils.geotools.ObjectType.ObjectType
+import org.locationtech.geomesa.utils.geotools.{ObjectType, SimpleFeatureTypes}
 import org.locationtech.geomesa.utils.text.StringSerialization
 import org.opengis.feature.`type`.AttributeDescriptor
 import org.opengis.feature.simple.SimpleFeatureType
@@ -175,7 +174,7 @@ object SimpleFeatureParquetSchema {
     * @return
     */
   private def geometry(binding: ObjectType): Types.Builder[_, _ <: Type] = {
-    val group = Types.buildGroup(Repetition.OPTIONAL)
+    def group: Types.GroupBuilder[GroupType] = Types.buildGroup(Repetition.OPTIONAL)
     binding match {
       case ObjectType.POINT =>
         group.id(GeometryBytes.TwkbPoint)
@@ -207,8 +206,8 @@ object SimpleFeatureParquetSchema {
             .requiredList().requiredListElement().element(PrimitiveTypeName.DOUBLE, Repetition.REPEATED).named(GeometryColumnX)
             .requiredList().requiredListElement().element(PrimitiveTypeName.DOUBLE, Repetition.REPEATED).named(GeometryColumnY)
 
-      case ObjectType.GEOMETRY_COLLECTION =>
-        throw new NotImplementedError("Geometry collections are not supported")
+      case ObjectType.GEOMETRY =>
+        Types.primitive(PrimitiveTypeName.BINARY, Repetition.OPTIONAL)
 
       case _ => throw new NotImplementedError(s"No mapping defined for geometry type $binding")
     }

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -29,8 +29,10 @@ class XmlCompositeConverter(
     delegates: Seq[(Predicate, ParsingConverter[Element])]
   ) extends AbstractCompositeConverter[Element](sft, errorMode, delegates) {
 
-  private val parser = new DocParser(xsd)
+  private val parser = new ThreadLocal[DocParser]() {
+    override def initialValue(): DocParser = new DocParser(xsd)
+  }
 
   override protected def parse(is: InputStream, ec: EvaluationContext): CloseableIterator[Element] =
-    XmlConverter.iterator(parser, is, encoding, lineMode, ec)
+    XmlConverter.iterator(parser.get, is, encoding, lineMode, ec)
 }

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -9,44 +9,33 @@
 package org.locationtech.geomesa.lambda.data
 
 import com.github.benmanes.caffeine.cache.LoadingCache
-import org.geotools.data.{DataStore, Query, Transaction}
-import org.geotools.util.factory.Hints
-import org.locationtech.geomesa.arrow.vector.SimpleFeatureVector.SimpleFeatureEncoding
-import org.locationtech.geomesa.filter.factory.FastFilterFactory
+import com.typesafe.scalalogging.StrictLogging
+import org.geotools.data.simple.SimpleFeatureReader
+import org.geotools.data.{DataStore, FeatureReader, Query, Transaction}
 import org.locationtech.geomesa.filter.filterToString
 import org.locationtech.geomesa.index.audit.QueryEvent
-import org.locationtech.geomesa.index.conf.QueryHints
 import org.locationtech.geomesa.index.geoserver.ViewParams
 import org.locationtech.geomesa.index.geotools.GeoMesaDataStore
-import org.locationtech.geomesa.index.iterators.{ArrowScan, DensityScan, StatsScan}
-import org.locationtech.geomesa.index.planning.QueryInterceptor.QueryInterceptorFactory
-import org.locationtech.geomesa.index.planning.QueryRunner
-import org.locationtech.geomesa.index.stats.GeoMesaStats
-import org.locationtech.geomesa.index.utils.Explainer
+import org.locationtech.geomesa.index.utils.{ExplainLogger, Explainer}
+import org.locationtech.geomesa.index.view.MergedQueryRunner
+import org.locationtech.geomesa.index.view.MergedQueryRunner.DataStoreQueryable
+import org.locationtech.geomesa.lambda.data.LambdaQueryRunner.TransientQueryable
 import org.locationtech.geomesa.lambda.stream.TransientStore
-import org.locationtech.geomesa.utils.bin.BinaryOutputEncoder
 import org.locationtech.geomesa.utils.collection.{CloseableIterator, SelfClosingIterator}
-import org.locationtech.geomesa.utils.stats.TopK
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
-import org.opengis.filter.Filter
 
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, Future}
-
-class LambdaQueryRunner(persistence: DataStore, transients: LoadingCache[String, TransientStore], stats: GeoMesaStats)
-    extends QueryRunner {
+class LambdaQueryRunner(ds: LambdaDataStore, persistence: DataStore, transients: LoadingCache[String, TransientStore])
+    extends MergedQueryRunner(
+      ds, Seq(TransientQueryable(transients) -> None, DataStoreQueryable(persistence) -> None), true, false) {
 
   import org.locationtech.geomesa.index.conf.QueryHints.RichHints
 
   // TODO pass explain through?
 
-  // query interceptors are handled separately by the persistent and transient layers
-  override protected val interceptors: QueryInterceptorFactory = QueryInterceptorFactory.empty()
-
   override def runQuery(sft: SimpleFeatureType, query: Query, explain: Explainer): CloseableIterator[SimpleFeature] = {
     val hints = configureQuery(sft, query).getHints // configure the query so we get viewparams, transforms, etc
     if (hints.isLambdaQueryPersistent && hints.isLambdaQueryTransient) {
-      runMergedQuery(sft, query, explain)
+      super.runQuery(sft, query, explain)
     } else if (hints.isLambdaQueryPersistent) {
       SelfClosingIterator(persistence.getFeatureReader(query, Transaction.AUTO_COMMIT))
     } else {
@@ -70,41 +59,26 @@ class LambdaQueryRunner(persistence: DataStore, transients: LoadingCache[String,
           .read(Option(query.getFilter), Option(query.getPropertyNames), Option(query.getHints), explain)
     }
   }
+}
 
-  private def runMergedQuery(sft: SimpleFeatureType, query: Query, explain: Explainer): CloseableIterator[SimpleFeature] = {
-    val hints = query.getHints
-    if (hints.isStatsQuery) {
-      // do the reduce here, as we can't merge json stats
-      hints.put(QueryHints.Internal.SKIP_REDUCE, java.lang.Boolean.TRUE)
-      StatsScan.StatsReducer(sft, hints)(standardQuery(sft, query, explain))
-    } else if (hints.isArrowQuery) {
-      val arrowSft = hints.getTransformSchema.getOrElse(sft)
+object LambdaQueryRunner {
 
-      val sort = hints.getArrowSort
-      val batchSize = ArrowScan.getBatchSize(hints)
-      val encoding = SimpleFeatureEncoding.min(hints.isArrowIncludeFid, hints.isArrowProxyFid)
+  import org.locationtech.geomesa.index.conf.QueryHints.RichHints
 
-      val dictionaryFields = hints.getArrowDictionaryFields
-      val providedDictionaries = hints.getArrowDictionaryEncodedValues(sft)
-      val cachedDictionaries: Map[String, TopK[AnyRef]] = if (!hints.isArrowCachedDictionaries) { Map.empty } else {
-        val toLookup = dictionaryFields.filterNot(providedDictionaries.contains)
-        toLookup.flatMap(stats.getTopK[AnyRef](sft, _)).map(k => k.property -> k).toMap
+  case class TransientQueryable(transients: LoadingCache[String, TransientStore])
+      extends MergedQueryRunner.Queryable with StrictLogging {
+    override def getFeatureReader(q: Query, t: Transaction): FeatureReader[SimpleFeatureType, SimpleFeature] = {
+      val store = transients.get(q.getTypeName)
+      val explain = new ExplainLogger(logger)
+      val iter = store.read(Option(q.getFilter), Option(q.getPropertyNames), Option(q.getHints), explain)
+
+      new SimpleFeatureReader() {
+        override def getFeatureType: SimpleFeatureType = q.getHints.getReturnSft
+        override def hasNext: Boolean = iter.hasNext
+        override def next(): SimpleFeature = iter.next()
+        override def close(): Unit = iter.close()
       }
-
-      val reducer = if (hints.isArrowDoublePass ||
-          dictionaryFields.forall(f => providedDictionaries.contains(f) || cachedDictionaries.contains(f))) {
-        val filter = Option(query.getFilter).filter(_ != Filter.INCLUDE).map(FastFilterFactory.optimize(sft, _))
-        // we have all the dictionary values, or we will run a query to determine them up front
-        val dictionaries = ArrowScan.createDictionaries(stats, sft, filter, dictionaryFields,
-          providedDictionaries, cachedDictionaries)
-        // set the merged dictionaries in the query where they'll be picked up by our delegates
-        hints.setArrowDictionaryEncodedValues(dictionaries.map { case (k, v) => (k, v.iterator.toSeq) })
-        new ArrowScan.BatchReducer(arrowSft, dictionaries, encoding, batchSize, sort)
-      } else if (hints.isArrowMultiFile) {
-        new ArrowScan.FileReducer(arrowSft, dictionaryFields, encoding, sort)
-      } else {
-        new ArrowScan.DeltaReducer(arrowSft, dictionaryFields, encoding, batchSize, sort)
-      }
+<<<<<<< HEAD
       hints.put(QueryHints.Internal.SKIP_REDUCE, java.lang.Boolean.TRUE)
       reducer(standardQuery(sft, query, explain))
     } else {
@@ -136,6 +110,8 @@ class LambdaQueryRunner(persistence: DataStore, transients: LoadingCache[String,
       StatsScan.StatsSft
     } else {
       super.getReturnSft(sft, hints)
+=======
+>>>>>>> main
     }
   }
 }

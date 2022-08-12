@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -59,6 +59,11 @@ object DataFrameFunctions extends SpatialEncoders {
       udfToColumn(ST_GeomFromGeoHash, constructorNames, geohash, precision)
     def st_geomFromGeoHash(geohash: Column, precision: Int): TypedColumn[Any, Geometry] =
       st_geomFromGeoHash(geohash, lit(precision))
+
+    def st_geomFromGeoJSON(wkt: Column): TypedColumn[Any, Geometry] =
+      udfToColumn(ST_GeomFromGeoJSON, constructorNames, wkt)
+    def st_geomFromGeoJSON(wkt: String): TypedColumn[Any, Geometry] =
+      st_geomFromGeoJSON(lit(wkt))
 
     def st_geomFromWKT(wkt: Column): TypedColumn[Any, Geometry] =
       udfToColumn(ST_GeomFromWKT, constructorNames, wkt)
@@ -348,6 +353,12 @@ object DataFrameFunctions extends SpatialEncoders {
 
     def st_lengthSphere(line: Column): TypedColumn[Any, jl.Double] =
       udfToColumn(ST_LengthSphere, relationNames, line)
+
+    def st_intersection(geom1:Column, geom2:Column): TypedColumn[Any, Geometry] =
+      udfToColumn(ST_Intersection, relationNames, geom1, geom2)
+
+    def st_difference(geom1:Column, geom2:Column): TypedColumn[Any, Geometry] =
+      udfToColumn(ST_Difference, relationNames, geom1, geom2)
   }
 
   /** Stack of all DataFrame DSL functions. */

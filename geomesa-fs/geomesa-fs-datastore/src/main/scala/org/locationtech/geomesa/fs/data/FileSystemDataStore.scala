@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -49,14 +49,17 @@ class FileSystemDataStore(
     names
   }
 
-  override def createSchema(sft: SimpleFeatureType): Unit = {
+  override def createSchema(original: SimpleFeatureType): Unit = {
     import org.locationtech.geomesa.fs.storage.common.RichSimpleFeatureType
 
-    manager.storage(sft.getTypeName) match {
+    manager.storage(original.getTypeName) match {
       case Some(s) =>
         logger.warn(s"Schema already exists: ${SimpleFeatureTypes.encodeType(s.metadata.sft, includeUserData = true)}")
 
       case None =>
+        // copy the feature type so that we don't affect it when removing user data, below
+        val sft = SimpleFeatureTypes.copy(original)
+
         GeoMesaSchemaValidator.validate(sft)
 
         // remove the configs in the user data as they're persisted separately
@@ -76,11 +79,13 @@ class FileSystemDataStore(
           }
           deprecated.getOrElse(true)
         }
+        val fileSize = sft.removeTargetFileSize()
 
         val path = manager.defaultPath(sft.getTypeName)
         val context = FileSystemContext(fc, conf, path, namespace)
 
-        val metadata = StorageMetadataFactory.create(context, meta, Metadata(sft, encoding, scheme, leafStorage))
+        val metadata =
+          StorageMetadataFactory.create(context, meta, Metadata(sft, encoding, scheme, leafStorage, fileSize))
         try { manager.register(path, FileSystemStorageFactory(context, metadata)) } catch {
           case NonFatal(e) => CloseQuietly(metadata).foreach(e.addSuppressed); throw e
         }

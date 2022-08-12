@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -14,7 +14,7 @@ import com.typesafe.config.ConfigFactory
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.utils.geotools.RichAttributeDescriptors._
-import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.AttributeOptions
+import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.{AttributeOptions, Configs}
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.AttributeOptions._
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.Configs._
 import org.locationtech.geomesa.utils.geotools.sft.SimpleFeatureSpecConfig
@@ -145,6 +145,18 @@ class SimpleFeatureTypesTest extends Specification {
         case d if java.lang.Boolean.valueOf(d.getUserData.get(AttributeOptions.OptIndex).asInstanceOf[String]) => d.getLocalName
       }
       indexed mustEqual List("dtg")
+    }
+
+    "handle bytes bytes" >> {
+      "with no values specified" >> {
+        val sft = SimpleFeatureTypes.createType("testing", "id:Integer,payload:Bytes,dtg:Date,*geom:Point:srid=4326")
+        sft.getAttributeCount mustEqual(4)
+        sft.getDescriptor("payload") must not beNull
+        val binding = sft.getDescriptor("payload").getType.getBinding
+        binding mustEqual(classOf[Array[Byte]])
+        val spec = SimpleFeatureTypes.encodeType(sft)
+        spec mustEqual s"id:Integer,payload:Bytes,dtg:Date,*geom:Point:srid=4326"
+      }
     }
 
     "handle list types" >> {
@@ -355,8 +367,8 @@ class SimpleFeatureTypesTest extends Specification {
       val failures = Seq(
         ("foo:Strong", "7. Expected attribute type binding"),
         ("foo:String,*bar:String", "16. Expected geometry type binding"),
-        ("foo:String,bar:String;;", "22. Expected one of: feature type option, end of spec"),
-        ("foo:String,bar,baz:String", "14. Expected one of: attribute name, attribute type binding, geometry type binding"),
+        ("foo:String,bar:String;;", "22. Expected one of: specification, feature type option, end of spec"),
+        ("foo:String,bar,baz:String", "14. Expected one of: attribute name, attribute, attribute type binding, geometry type binding"),
         ("foo:String:bar,baz:String", "14. Expected attribute option")
       )
       forall(failures) { case (spec, message) =>
@@ -455,6 +467,41 @@ class SimpleFeatureTypesTest extends Specification {
       sft.getTypeName must be equalTo "testconf"
     }
 
+    "set default date field from conf" >> {
+      val conf = ConfigFactory.parseString(
+        """
+          |{
+          |  type-name = "test"
+          |  fields = [
+          |    { name = "dtg1", type = "Date"  },
+          |    { name = "dtg2", type = "Date", default = true },
+          |    { name = "dtg3", type = "Date" },
+          |    { name = "geom", type = "Point", srid = 4326, default = true }
+          |  ]
+          |}
+        """.stripMargin)
+
+      val sft = SimpleFeatureTypes.createType(conf)
+      sft.getUserData.get(Configs.DefaultDtgField) mustEqual "dtg2"
+    }
+
+    "set default date field with timestamps from conf" >> {
+      val conf = ConfigFactory.parseString(
+        """
+          |{
+          |  type-name = "test"
+          |  fields = [
+          |    { name = "dtg1", type = "Timestamp"  },
+          |    { name = "dtg2", type = "Timestamp", default = true },
+          |    { name = "dtg3", type = "Timestamp" },
+          |    { name = "geom", type = "Point", srid = 4326, default = true }
+          |  ]
+          |}
+        """.stripMargin)
+
+      val sft = SimpleFeatureTypes.createType(conf)
+      sft.getUserData.get(Configs.DefaultDtgField) mustEqual "dtg2"
+    }
 
     "allow user data in conf" >> {
       val conf = ConfigFactory.parseString(
@@ -617,6 +664,13 @@ class SimpleFeatureTypesTest extends Specification {
         "geomesa.table.sharing" -> "true",
         "geomesa.table.sharing.prefix" -> "\u0001"
       )
+    }
+
+    "preserve spaces in user data" >> {
+      val sft = SimpleFeatureTypes.createType("test", "name:String,dtg:Date,*geom:Point:srid=4326;geomesa.foo='1 day'")
+      sft.getUserData.get("geomesa.foo") mustEqual "1 day"
+      val encoded = SimpleFeatureTypes.encodeType(sft, includeUserData = true)
+      SimpleFeatureTypes.createType("test", encoded).getUserData.get("geomesa.foo") mustEqual "1 day"
     }
   }
 

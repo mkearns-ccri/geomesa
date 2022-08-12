@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,16 +11,14 @@ package org.locationtech.geomesa.accumulo.iterators
 import java.time.{ZoneOffset, ZonedDateTime}
 import java.util.{Collections, Date}
 
-import org.apache.accumulo.core.client.mock.MockInstance
-import org.apache.accumulo.core.client.security.tokens.PasswordToken
-import org.apache.accumulo.core.security.Authorizations
+import org.apache.accumulo.core.client.Connector
 import org.geotools.data.{DataStore, DataStoreFinder}
 import org.junit.runner.RunWith
-import org.locationtech.geomesa.accumulo.TestWithDataStore
-import org.locationtech.geomesa.accumulo.data.{AccumuloDataStore, AccumuloDataStoreParams}
+import org.locationtech.geomesa.accumulo.data.AccumuloDataStoreParams
+import org.locationtech.geomesa.accumulo.{MiniCluster, TestWithFeatureType}
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.security.SecurityUtils
-import org.locationtech.geomesa.utils.collection.SelfClosingIterator
+import org.locationtech.geomesa.utils.collection.{CloseableIterator, SelfClosingIterator}
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.Configs
 import org.opengis.feature.simple.SimpleFeature
@@ -29,76 +27,87 @@ import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
 
 @RunWith(classOf[JUnitRunner])
-class DtgAgeOffTest extends Specification with TestWithDataStore {
+class DtgAgeOffTest extends Specification with TestWithFeatureType {
 
   import scala.collection.JavaConverters._
 
   sequential
 
-  override val spec = "dtg:Date,geom:Point:srid=4326"
+  override val spec = "l1:Int,l2:Boolean,l3:Long,l4:Long,s:Int," +
+    "name:String,foo:String:index=join,geom:Point:srid=4326,dtg:Date,bar:String:index=join"
 
   val today: ZonedDateTime = ZonedDateTime.now(ZoneOffset.UTC)
 
   def add(ids: Range, ident: String, vis: String): Unit = {
     val features = ids.map { i =>
-      ScalaSimpleFeature.create(sft, s"${ident}_$i", Date.from(today.minusDays(i).toInstant), s"POINT($i $i)")
+      ScalaSimpleFeature.create(sft,  i.toString, 1, true, 3L, 4L, 5,
+        "foo", s"${ident}_$i", s"POINT($i $i)", Date.from(today.minusDays(i).toInstant), "bar")
     }
     features.foreach(SecurityUtils.setFeatureVisibility(_, vis))
     addFeatures(features)
   }
 
-  def testDays(ds: DataStore, days: Int): Seq[SimpleFeature] = {
+  def getDataStore(user: String): DataStore =
+    DataStoreFinder.getDataStore((dsParams ++ Map(AccumuloDataStoreParams.UserParam.key -> user)).asJava)
+
+  def configureAgeOff(days: Int): Unit = {
     ds.updateSchema(sft.getTypeName,
       SimpleFeatureTypes.immutable(sft, Collections.singletonMap(Configs.FeatureExpiration, s"dtg($days days)")))
-    SelfClosingIterator(ds.getFeatureSource(sft.getTypeName).getFeatures(Filter.INCLUDE).features).toList
   }
 
+  def query(ds: DataStore): Seq[SimpleFeature] =
+    SelfClosingIterator(ds.getFeatureSource(sft.getTypeName).getFeatures(Filter.INCLUDE).features).toList
+
   "DTGAgeOff" should {
+    "run at scan time with vis" in {
+      add(1 to 10, "id", "user")
+      add(1 to 10, "idx2", "system")
+      add(1 to 10, "idx3", "admin")
 
-    "run at scan time" >> {
-      add(1 to 10, "id", "A")
-      testDays(ds, 11) must haveSize(10)
-      testDays(ds, 10) must haveSize(9)
-      testDays(ds, 5) must haveSize(4)
-      testDays(ds, 1) must haveSize(0)
+      val userDs = getDataStore(user.name)
+      val adminDs = getDataStore(admin.name)
+      val sysDs = ds
+
+      query(userDs) must haveSize(10)
+      query(adminDs) must haveSize(20)
+      query(sysDs) must haveSize(30)
+
+      scanDirect(30)
+
+      configureAgeOff(11)
+      query(userDs) must haveSize(10)
+      query(adminDs) must haveSize(20)
+      query(sysDs) must haveSize(30)
+
+      scanDirect(30)
+
+      configureAgeOff(10)
+      query(userDs) must haveSize(9)
+      query(adminDs) must haveSize(18)
+      query(sysDs) must haveSize(27)
+
+      scanDirect(27)
+
+      configureAgeOff(5)
+      query(userDs) must haveSize(4)
+      query(adminDs) must haveSize(8)
+      query(sysDs) must haveSize(12)
+
+      configureAgeOff(1)
+      query(userDs) must haveSize(0)
+      query(adminDs) must haveSize(0)
+      query(sysDs) must haveSize(0)
     }
+  }
 
-    "respect vis with ageoff (vis trumps ageoff)" >> {
-      // these exist but shouldn't be read!
-      add(1 to 10, "anotherid", "D")
-      testDays(ds, 11) must haveSize(10)
-      testDays(ds, 10) must haveSize(9)
-      testDays(ds, 5) must haveSize(4)
-      testDays(ds, 1) must haveSize(0)
-
-      val dsWithExtraAuth = {
-        val connWithExtraAuth = {
-          val mockInstance = new MockInstance("mycloud")
-          val mockConnector = mockInstance.getConnector("user2", new PasswordToken("password2"))
-          mockConnector.securityOperations().changeUserAuthorizations("user2", new Authorizations("A,B,C,D"))
-          mockConnector
-        }
-        val params = dsParams ++ Map(AccumuloDataStoreParams.ConnectorParam.key -> connWithExtraAuth)
-        DataStoreFinder.getDataStore(params.asJava).asInstanceOf[AccumuloDataStore]
-      }
-
-      testDays(dsWithExtraAuth, 11) must haveSize(20)
-      testDays(dsWithExtraAuth, 10) must haveSize(18)
-      testDays(dsWithExtraAuth, 5) must haveSize(8)
-      testDays(dsWithExtraAuth, 1) must haveSize(0)
-
-      // these can be read
-      add(1 to 10, "anotherid", "C")
-      testDays(ds, 11) must haveSize(20)
-      testDays(ds, 10) must haveSize(18)
-      testDays(ds, 5) must haveSize(8)
-      testDays(ds, 1) must haveSize(0)
-
-      // these are 3x
-      testDays(dsWithExtraAuth, 11) must haveSize(30)
-      testDays(dsWithExtraAuth, 10) must haveSize(27)
-      testDays(dsWithExtraAuth, 5) must haveSize(12)
-      testDays(dsWithExtraAuth, 1) must haveSize(0)
+  // Scans all GeoMesa Accumulo tables directly and verifies the number of records that the `root` user can see.
+  private def scanDirect(expected: Int) = {
+    val conn: Connector = MiniCluster.cluster.getConnector(MiniCluster.Users.root.name, MiniCluster.Users.root.password)
+    conn.tableOperations().list().asScala.filter(t => t.contains("DtgAgeOffTest_DtgAgeOffTest")).forall { tableName =>
+      val scanner = conn.createScanner(tableName, MiniCluster.Users.root.auths)
+      val count = scanner.asScala.size
+      scanner.close()
+      count mustEqual expected
     }
   }
 }

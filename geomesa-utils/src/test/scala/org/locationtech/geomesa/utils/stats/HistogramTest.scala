@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,11 +11,11 @@ package org.locationtech.geomesa.utils.stats
 import java.lang.{Double => jDouble, Float => jFloat, Long => jLong}
 import java.util.Date
 
-import org.locationtech.jts.geom.Geometry
 import org.geotools.feature.simple.SimpleFeatureBuilder
 import org.junit.runner.RunWith
 import org.locationtech.geomesa.utils.geotools.GeoToolsDateFormat
 import org.locationtech.geomesa.utils.text.WKTUtils
+import org.locationtech.jts.geom.Geometry
 import org.opengis.feature.simple.SimpleFeature
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
@@ -711,8 +711,8 @@ class HistogramTest extends Specification with StatTestHelper {
         val toBounds =
           (WKTUtils.read("POINT (-91.7467224461 40.6750300641)"), WKTUtils.read("POINT (-91.7186474559 40.6933565934)"))
 
-        val from = new BinnedGeometryArray(10000, fromBounds)
-        val to = new BinnedGeometryArray(10000, toBounds)
+        val from = BinnedArray(10000, fromBounds)
+        val to = BinnedArray(10000, toBounds)
         (0 until 10000).foreach(i => from.counts(i) = 1)
 
         Histogram.copyInto(to, from) must not(throwAn[Exception])

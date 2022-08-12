@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -10,6 +10,7 @@ package org.locationtech.geomesa.kafka.tools.ingest
 
 import com.beust.jcommander.{Parameter, ParameterException, Parameters}
 import com.typesafe.config.Config
+import org.locationtech.geomesa.jobs.Awaitable
 import org.locationtech.geomesa.kafka.data.KafkaDataStore
 import org.locationtech.geomesa.kafka.tools.KafkaDataStoreCommand.KafkaDistributedCommand
 import org.locationtech.geomesa.kafka.tools.ProducerDataStoreParams
@@ -17,7 +18,7 @@ import org.locationtech.geomesa.kafka.tools.ingest.KafkaIngestCommand.KafkaInges
 import org.locationtech.geomesa.tools.Command
 import org.locationtech.geomesa.tools.DistributedRunParam.RunModes
 import org.locationtech.geomesa.tools.DistributedRunParam.RunModes.RunMode
-import org.locationtech.geomesa.tools.ingest.IngestCommand.IngestParams
+import org.locationtech.geomesa.tools.ingest.IngestCommand.{IngestParams, Inputs}
 import org.locationtech.geomesa.tools.ingest._
 import org.locationtech.geomesa.tools.utils.ParameterConverters.DurationConverter
 import org.locationtech.geomesa.utils.collection.CloseableIterator
@@ -27,21 +28,24 @@ import scala.concurrent.duration.Duration
 
 class KafkaIngestCommand extends IngestCommand[KafkaDataStore] with KafkaDistributedCommand {
 
+  import scala.collection.JavaConverters._
+
   override val params = new KafkaIngestParams()
 
   // override to add delay in writing messages
-  override protected def createIngest(
+  override protected def startIngest(
       mode: RunMode,
+      ds: KafkaDataStore,
       sft: SimpleFeatureType,
       converter: Config,
-      inputs: Seq[String]): Runnable = {
+      inputs: Inputs): Awaitable = {
     val delay = params.delay.toMillis
-    if (delay <= 0) { super.createIngest(mode, sft, converter, inputs) } else {
+    if (delay <= 0) { super.startIngest(mode, ds, sft, converter, inputs) } else {
       if (mode != RunModes.Local) {
         throw new ParameterException("Delay is only supported for local ingest")
       }
       Command.user.info(s"Inserting delay of ${params.delay}")
-      new LocalConverterIngest(connection, sft, converter, inputs, params.threads) {
+      new LocalConverterIngest(ds, connection.asJava, sft, converter, inputs, params.threads) {
         override protected def features(iter: CloseableIterator[SimpleFeature]): CloseableIterator[SimpleFeature] =
           iter.map { f => Thread.sleep(delay); f }
       }

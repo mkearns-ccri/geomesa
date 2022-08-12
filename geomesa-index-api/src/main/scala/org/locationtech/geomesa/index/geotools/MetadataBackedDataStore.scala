@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -9,13 +9,13 @@
 package org.locationtech.geomesa.index.geotools
 
 import java.time.{Instant, ZoneOffset}
-import java.util.{List => jList}
-
+import java.util.{Locale, List => jList}
 import com.typesafe.scalalogging.LazyLogging
 import org.geotools.data._
 import org.geotools.data.simple.{SimpleFeatureSource, SimpleFeatureWriter}
 import org.geotools.feature.{FeatureTypes, NameImpl}
 import org.geotools.util.factory.Hints
+import org.locationtech.geomesa.index.FlushableFeatureWriter
 import org.locationtech.geomesa.index.geotools.GeoMesaDataStoreFactory.NamespaceConfig
 import org.locationtech.geomesa.index.metadata.GeoMesaMetadata._
 import org.locationtech.geomesa.index.metadata.HasGeoMesaMetadata
@@ -25,13 +25,14 @@ import org.locationtech.geomesa.utils.geotools.RichSimpleFeatureType.RichSimpleF
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.Configs
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.InternalConfigs.TableSharingPrefix
 import org.locationtech.geomesa.utils.geotools.converters.FastConverter
-import org.locationtech.geomesa.utils.geotools.{GeoToolsDateFormat, SimpleFeatureTypes}
-import org.locationtech.geomesa.utils.index.GeoMesaSchemaValidator
+import org.locationtech.geomesa.utils.geotools.{FeatureUtils, GeoToolsDateFormat, SimpleFeatureTypes}
+import org.locationtech.geomesa.utils.index.{GeoMesaSchemaValidator, IndexMode, ReservedWordCheck}
 import org.locationtech.geomesa.utils.io.CloseWithLogging
 import org.opengis.feature.`type`.Name
 import org.opengis.feature.simple.SimpleFeatureType
 import org.opengis.filter.Filter
 
+import java.io.IOException
 import scala.util.control.NonFatal
 
 /**
@@ -45,7 +46,7 @@ abstract class MetadataBackedDataStore(config: NamespaceConfig) extends DataStor
   // TODO: GEOMESA-2360 - Remove global axis order hint from MetadataBackedDataStore
   Hints.putSystemDefault(Hints.FORCE_LONGITUDE_FIRST_AXIS_ORDER, true)
 
-  protected [geomesa] val interceptors = QueryInterceptorFactory(this)
+  protected [geomesa] val interceptors: QueryInterceptorFactory = QueryInterceptorFactory(this)
 
   // hooks to allow extended functionality
 
@@ -240,26 +241,9 @@ abstract class MetadataBackedDataStore(config: NamespaceConfig) extends DataStor
         throw new IllegalArgumentException(s"Schema '$typeName' does not exist")
       }
 
-      // validate that default geometry and date have not changed (rename is ok)
-      if (schema.getGeomIndex != previousSft.getGeomIndex) {
-        throw new UnsupportedOperationException("Changing the default geometry attribute is not supported")
-      } else if (schema.getDtgIndex != previousSft.getDtgIndex) {
-        throw new UnsupportedOperationException("Changing the default date attribute is not supported")
-      }
+      GeoMesaSchemaValidator.validate(schema)
 
-      // check that unmodifiable user data has not changed
-      MetadataBackedDataStore.UnmodifiableUserDataKeys.foreach { key =>
-        if (schema.userData[Any](key) != previousSft.userData[Any](key)) {
-          throw new UnsupportedOperationException(s"Updating '$key' is not supported")
-        }
-      }
-
-      // check for column type changes
-      previousSft.getAttributeDescriptors.asScala.zipWithIndex.foreach { case (prev, i) =>
-        if (prev.getType.getBinding != schema.getDescriptor(i).getType.getBinding) {
-          throw new UnsupportedOperationException("Updating schema column types is not allowed")
-        }
-      }
+      validateSchemaUpdate(previousSft, schema)
 
       val sft = SimpleFeatureTypes.mutable(schema)
 
@@ -319,6 +303,21 @@ abstract class MetadataBackedDataStore(config: NamespaceConfig) extends DataStor
   override def getFeatureSource(typeName: Name): SimpleFeatureSource = getFeatureSource(typeName.getLocalPart)
 
   /**
+   * @see org.geotools.data.DataStore#getFeatureReader(org.geotools.data.Query, org.geotools.data.Transaction)
+   * @param query query to execute
+   * @param transaction transaction to use (currently ignored)
+   * @return feature reader
+   */
+  override def getFeatureReader(query: Query, transaction: Transaction): GeoMesaFeatureReader = {
+    require(query.getTypeName != null, "Type name is required in the query")
+    val sft = getSchema(query.getTypeName)
+    if (sft == null) {
+      throw new IOException(s"Schema '${query.getTypeName}' has not been initialized. Please call 'createSchema' first.")
+    }
+    getFeatureReader(sft, transaction, query)
+  }
+
+  /**
     * Create a general purpose writer that is capable of updates and deletes.
     * Does <b>not</b> allow inserts. Will return all existing features.
     *
@@ -327,7 +326,7 @@ abstract class MetadataBackedDataStore(config: NamespaceConfig) extends DataStor
     * @param transaction transaction (currently ignored)
     * @return feature writer
     */
-  override def getFeatureWriter(typeName: String, transaction: Transaction): SimpleFeatureWriter =
+  override def getFeatureWriter(typeName: String, transaction: Transaction): FlushableFeatureWriter =
     getFeatureWriter(typeName, Filter.INCLUDE, transaction)
 
   /**
@@ -341,7 +340,13 @@ abstract class MetadataBackedDataStore(config: NamespaceConfig) extends DataStor
     * @param transaction transaction (currently ignored)
     * @return feature writer
     */
-  override def getFeatureWriter(typeName: String, filter: Filter, transaction: Transaction): SimpleFeatureWriter
+  override def getFeatureWriter(typeName: String, filter: Filter, transaction: Transaction): FlushableFeatureWriter = {
+    val sft = getSchema(typeName)
+    if (sft == null) {
+      throw new IOException(s"Schema '$typeName' has not been initialized. Please call 'createSchema' first.")
+    }
+    getFeatureWriter(sft, transaction, Option(filter))
+  }
 
   /**
     * Creates a feature writer only for writing - does not allow updates or deletes.
@@ -351,7 +356,41 @@ abstract class MetadataBackedDataStore(config: NamespaceConfig) extends DataStor
     * @param transaction transaction (currently ignored)
     * @return feature writer
     */
-  override def getFeatureWriterAppend(typeName: String, transaction: Transaction): SimpleFeatureWriter
+  override def getFeatureWriterAppend(typeName: String, transaction: Transaction): FlushableFeatureWriter = {
+    val sft = getSchema(typeName)
+    if (sft == null) {
+      throw new IOException(s"Schema '$typeName' has not been initialized. Please call 'createSchema' first.")
+    }
+    getFeatureWriter(sft, transaction, None)
+  }
+
+  /**
+   * Internal method to get a feature reader without reloading the simple feature type. We don't expose this
+   * widely as we want to ensure that the sft has been loaded from our catalog
+   *
+   * @param sft simple feature type
+   * @param transaction transaction
+   * @param query query
+   * @return
+   */
+  private[geomesa] def getFeatureReader(
+      sft: SimpleFeatureType,
+      transaction: Transaction,
+      query: Query): GeoMesaFeatureReader
+
+  /**
+   * Internal method to get a feature writer without reloading the simple feature type. We don't expose this
+   * widely as we want to ensure that the sft has been loaded from our catalog
+   *
+   * @param sft simple feature type
+   * @param transaction transaction
+   * @param filter if defined, will do an updating write, otherwise will do an appending write
+   * @return
+   */
+  private[geomesa] def getFeatureWriter(
+      sft: SimpleFeatureType,
+      transaction: Transaction,
+      filter: Option[Filter]): FlushableFeatureWriter
 
   /**
     * @see org.geotools.data.DataAccess#getInfo()
@@ -385,12 +424,58 @@ abstract class MetadataBackedDataStore(config: NamespaceConfig) extends DataStor
   // end methods from org.geotools.data.DataStore
 
   /**
+   * Validate a call to updateSchema, throwing errors on failed validation
+   *
+   * @param existing existing schema
+   * @param schema updated sft
+   */
+  protected def validateSchemaUpdate(existing: SimpleFeatureType, schema: SimpleFeatureType): Unit = {
+    // validate that default geometry and date have not changed (rename is ok)
+    if (schema.getGeomIndex != existing.getGeomIndex) {
+      throw new UnsupportedOperationException("Changing the default geometry attribute is not supported")
+    } else if (schema.getDtgIndex != existing.getDtgIndex) {
+      throw new UnsupportedOperationException("Changing the default date attribute is not supported")
+    }
+
+    // check that unmodifiable user data has not changed
+    MetadataBackedDataStore.UnmodifiableUserDataKeys.foreach { key =>
+      if (schema.userData[Any](key) != existing.userData[Any](key)) {
+        throw new UnsupportedOperationException(s"Updating '$key' is not supported")
+      }
+    }
+
+    // validate that attributes weren't removed
+    if (existing.getAttributeCount > schema.getAttributeCount) {
+      throw new UnsupportedOperationException("Removing attributes from the schema is not supported")
+    }
+
+    // check for column type changes
+    existing.getAttributeDescriptors.asScala.zipWithIndex.foreach { case (prev, i) =>
+      val binding = schema.getDescriptor(i).getType.getBinding
+      if (!binding.isAssignableFrom(prev.getType.getBinding)) {
+        throw new UnsupportedOperationException(
+          s"Incompatible schema column type change: ${schema.getDescriptor(i).getLocalName} " +
+              s"from ${prev.getType.getBinding.getName} to ${binding.getName}")
+      }
+    }
+
+    // check for reserved words - only check for new/renamed attributes
+    val reserved = schema.getAttributeDescriptors.asScala.map(_.getLocalName).exists { name =>
+      existing.getDescriptor(name) == null && FeatureUtils.ReservedWords.contains(name.toUpperCase(Locale.US))
+    }
+    if (reserved) {
+      ReservedWordCheck.validateAttributeNames(schema)
+    }
+  }
+
+  /**
     * Acquires a distributed lock for all data stores sharing this catalog table.
     * Make sure that you 'release' the lock in a finally block.
     */
   protected [geomesa] def acquireCatalogLock(): Releasable = {
     import org.locationtech.geomesa.index.DistributedLockTimeout
-    val path = s"/org.locationtech.geomesa/ds/${config.catalog}"
+    val dsTypeName = getClass.getSimpleName.replaceAll("[^A-Za-z]", "")
+    val path = s"/org.locationtech.geomesa/ds/$dsTypeName/${config.catalog}"
     val timeout = DistributedLockTimeout.toDuration.getOrElse {
       // note: should always be a valid fallback value so this exception should never be triggered
       throw new IllegalArgumentException(s"Couldn't convert '${DistributedLockTimeout.get}' to a duration")
@@ -406,5 +491,17 @@ object MetadataBackedDataStore {
   import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes.Configs._
 
   private val UnmodifiableUserDataKeys =
-    Set(TableSharing, TableSharingPrefix, IndexVisibilityLevel, IndexZ3Interval, IndexXzPrecision)
+    Set(
+      TableSharing,
+      TableSharingPrefix,
+      IndexVisibilityLevel,
+      IndexZ3Interval,
+      IndexS3Interval,
+      IndexXzPrecision,
+      IndexZShards,
+      IndexZ2Shards,
+      IndexZ3Shards,
+      IndexIdShards,
+      IndexAttributeShards
+    )
 }

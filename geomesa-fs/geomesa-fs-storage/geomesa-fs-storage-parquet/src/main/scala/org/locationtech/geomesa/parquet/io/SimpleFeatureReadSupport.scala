@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -19,9 +19,10 @@ import org.apache.parquet.io.api._
 import org.apache.parquet.schema.MessageType
 import org.geotools.geometry.jts.JTSFactoryFinder
 import org.locationtech.geomesa.features.ScalaSimpleFeature
-import org.locationtech.geomesa.features.serialization.ObjectType
-import org.locationtech.geomesa.features.serialization.ObjectType.ObjectType
 import org.locationtech.geomesa.parquet.io.SimpleFeatureReadSupport.SimpleFeatureRecordMaterializer
+import org.locationtech.geomesa.utils.geotools.ObjectType
+import org.locationtech.geomesa.utils.geotools.ObjectType.ObjectType
+import org.locationtech.geomesa.utils.text.WKBUtils
 import org.locationtech.jts.geom.Coordinate
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 
@@ -174,6 +175,7 @@ object SimpleFeatureReadSupport {
       case ObjectType.MULTIPOINT      => new MultiPointConverter(i, callback)
       case ObjectType.MULTILINESTRING => new MultiLineStringConverter(i, callback)
       case ObjectType.MULTIPOLYGON    => new MultiPolygonConverter(i, callback)
+      case ObjectType.GEOMETRY        => new GeometryWkbConverter(i, callback)
       case _ => throw new IllegalArgumentException(s"Can't deserialize field of type $binding")
     }
   }
@@ -387,6 +389,10 @@ object SimpleFeatureReadSupport {
       }
       callback.set(index, gf.createMultiPolygon(polys))
     }
+  }
+
+  class GeometryWkbConverter(index: Int, callback: Settable) extends PrimitiveConverter {
+    override def addBinary(value: Binary): Unit = callback.set(index, WKBUtils.read(value.getBytes))
   }
 
   /**

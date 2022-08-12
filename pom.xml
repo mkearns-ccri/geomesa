@@ -8,9 +8,13 @@
     <inceptionYear>2013</inceptionYear>
 
     <groupId>org.locationtech.geomesa</groupId>
-    <artifactId>geomesa_2.11</artifactId>
+    <artifactId>geomesa_2.12</artifactId>
     <packaging>pom</packaging>
+<<<<<<< HEAD
     <version>2.4.3-SNAPSHOT</version>
+=======
+    <version>3.5.0-SNAPSHOT</version>
+>>>>>>> main
 
     <licenses>
         <license>
@@ -25,7 +29,6 @@
         <module>geomesa-archetypes</module>
         <module>geomesa-arrow</module>
         <module>geomesa-bigtable</module>
-        <module>geomesa-blobstore</module>
         <module>geomesa-cassandra</module>
         <module>geomesa-convert</module>
         <module>geomesa-features</module>
@@ -42,7 +45,6 @@
         <module>geomesa-lambda</module>
         <module>geomesa-memory</module>
         <module>geomesa-metrics</module>
-        <module>geomesa-native-api</module>
         <module>geomesa-process</module>
         <module>geomesa-redis</module>
         <module>geomesa-security</module>
@@ -61,41 +63,47 @@
 
         <!-- *** main dependency versions *** -->
 
-        <scala.binary.version>2.11</scala.binary.version> <!-- must remain outside of version specific scala profiles for sbt/ivy -->
-        <scala.version>2.11.7</scala.version>
+        <scala.version>2.12.13</scala.version>
+        <scala.binary.version>2.12</scala.binary.version> <!-- must remain outside of version specific scala profiles for sbt/ivy -->
 
-        <scala.xml.version>1.0.6</scala.xml.version>
-        <scala.parsers.version>1.0.6</scala.parsers.version>
+        <scala.xml.version>1.3.0</scala.xml.version>
+        <scala.parsers.version>1.1.2</scala.parsers.version>
 
-        <gt.version>21.1</gt.version>
-        <geoserver.version>2.15.1</geoserver.version>
-        <jts.version>1.16.0</jts.version>
-        <avro.version>1.7.5</avro.version> <!-- see also confluent.avro.version -->
+        <gt.version>23.3</gt.version> <!-- make sure this tracks with gs, jts, and spatial4j -->
+        <geoserver.version>2.17.3</geoserver.version>
+        <jts.version>1.17.0</jts.version> <!-- needs to track with gt/gs version -->
+        <spatial4j.version>0.8</spatial4j.version> <!-- needs to track with jts version -->
+        <!-- match dependency version used by gt-referencing for convenience -->
+        <ejml.version>0.34</ejml.version>
+        <avro.version>1.8.2</avro.version> <!-- see also confluent.avro.version -->
         <parquet.version>1.9.0</parquet.version>
         <orc.version>1.5.4</orc.version>
-        <fasterxml.jackson.version>2.9.7</fasterxml.jackson.version> <!-- used by geoserver (2.9.7), spark (2.6.7) and arrow (2.7.1) -->
-        <fasterxml.jackson.databind.version>2.9.7</fasterxml.jackson.databind.version> <!-- used by spark (2.6.7.1) and arrow (2.7.1) -->
+        <fasterxml.jackson.version>2.12.1</fasterxml.jackson.version> <!-- used by geoserver (2.9.10), spark (2.6.7) and arrow (2.7.1) -->
+        <fasterxml.jackson.databind.version>2.12.1</fasterxml.jackson.databind.version> <!-- used by geoserver (2.9.10.4), spark (2.6.7.1) and arrow (2.7.1) -->
         <codehaus.jackson.version>1.9.3</codehaus.jackson.version>
-        <gdal.version>2.0.0</gdal.version>
         <json4s.version>3.5.4</json4s.version>
         <scalatra.version>2.6.3</scalatra.version>
         <kryo.version>3.0.3</kryo.version>
-        <arrow.version>0.10.0</arrow.version>
-        <netty.version>4.1.17.Final</netty.version>
+        <arrow.version>0.16.0</arrow.version>
+        <netty.version>4.1.48.Final</netty.version>
         <metrics.version>3.2.6</metrics.version>
+        <aws.sdk.version>1.11.421</aws.sdk.version>
 
-        <specs2.version>4.3.2</specs2.version>
-        <junit.version>4.12</junit.version>
+        <specs2.version>4.9.2</specs2.version>
+        <junit.version>4.13.1</junit.version>
 
         <!-- *** provided artifacts, not bundled to support multiple environments *** -->
 
-        <accumulo.version>1.8.1</accumulo.version>
-        <zookeeper.version>3.4.10</zookeeper.version>
-        <thrift.version>0.9.3</thrift.version>
-        <hadoop.version>2.6.4</hadoop.version>
-        <spark.version>2.3.1</spark.version>
-        <hbase.version>1.3.1</hbase.version>
-        <hbase.guava.version>12.0.1</hbase.guava.version>
+        <accumulo.version>2.0.0</accumulo.version>
+        <accumulo-1.version>1.9.3</accumulo-1.version>
+        <zookeeper.version>3.4.14</zookeeper.version>
+        <thrift.version>0.12.0</thrift.version>
+        <hadoop.version>2.8.5</hadoop.version>
+        <guava.version>27.0-jre</guava.version>
+        <spark.version>2.4.7</spark.version>
+        <hbase.version>2.2.3</hbase.version>
+        <hbase-1.version>1.4.12</hbase-1.version>
+        <hbase.guava.version>11.0.2</hbase.guava.version>
         <protobuf.version>2.5.0</protobuf.version>
         <cassandra.version>3.0.0</cassandra.version>
         <cassandra.guava.version>18.0</cassandra.guava.version>
@@ -103,6 +111,7 @@
         <zkclient.version>0.10</zkclient.version> <!-- corresponding versions: 0.10, 0.10, 0.10, 0.7 -->
         <kafka.jopt.version>5.0.4</kafka.jopt.version> <!-- corresponding versions: 5.0.4, 5.0.4, 4.9, 3.2 -->
         <confluent.version>5.1.0</confluent.version>
+        <confluent.recommended.version>5.5.8</confluent.recommended.version>
         <confluent.avro.version>1.8.2</confluent.avro.version>
 
         <slf4j.version>1.7.25</slf4j.version> <!-- 1.7.x is for hadoop 2 and accumulo 1.5.x -->
@@ -111,11 +120,9 @@
 
         <!-- *** maven build configuration *** -->
 
-        <attach.installers>true</attach.installers> <!-- whether install artifacts are published to maven or not -->
-
         <!-- testing properties -->
-        <maven.test.jvmargs>-Duser.timezone=UTC -Xms1g -Xmx8g -XX:-UseGCOverheadLimit -Djava.net.preferIPv4Stack=true -Djava.awt.headless=true -Dgeomesa.scan.ranges.target=500 -Duser.language=en -Duser.region=US</maven.test.jvmargs>
-        <test.fork.count>1</test.fork.count>
+        <maven.test.jvmargs>-Xms512m -Xmx4g -XX:-UseGCOverheadLimit -XX:MaxJavaStackTraceDepth=1000000</maven.test.jvmargs>
+        <test.fork.count>4</test.fork.count>
         <test.fork.reuse>true</test.fork.reuse>
         <!-- arrow tests become extremely slow with assertions enabled-->
         <test.enable.assertions>false</test.enable.assertions>
@@ -123,17 +130,18 @@
         <!-- *** documentation *** -->
 
         <!-- bump version right before performing releases for the README and the documentation -->
-        <geomesa.release.version>2.4.0</geomesa.release.version>
-        <geomesa.devel.version>2.5.0-SNAPSHOT</geomesa.devel.version>
-        <copyright.year>2019</copyright.year>
+        <geomesa.release.version>3.4.1</geomesa.release.version>
+        <geomesa.devel.version>3.5.0-SNAPSHOT</geomesa.devel.version>
+        <copyright.year>2022</copyright.year>
 
         <!-- recommended installation versions -->
-        <accumulo.version.recommended>1.9.3</accumulo.version.recommended>
-        <hbase.version.recommended>1.4.11</hbase.version.recommended>
-        <cassandra.server.version.recommended>3.11.4</cassandra.server.version.recommended>
-        <cassandra.driver.version.recommended>3.7.2</cassandra.driver.version.recommended>
+        <accumulo.version.recommended>2.0.0</accumulo.version.recommended>
+        <hbase.version.recommended>2.2.6</hbase.version.recommended>
+        <hbase.thirdparty.version.recommended>2.2.1</hbase.thirdparty.version.recommended>
+        <cassandra.server.version.recommended>3.11.8</cassandra.server.version.recommended>
+        <cassandra.driver.version.recommended>3.10.2</cassandra.driver.version.recommended>
         <hadoop.version.recommended>2.8.5</hadoop.version.recommended>
-        <zookeeper.version.recommended>3.5.6</zookeeper.version.recommended>
+        <zookeeper.version.recommended>3.4.14</zookeeper.version.recommended>
     </properties>
 
     <profiles>
@@ -165,9 +173,12 @@
 
         <profile>
             <id>central</id>
+<<<<<<< HEAD
             <properties>
                 <attach.installers>true</attach.installers>
             </properties>
+=======
+>>>>>>> main
             <build>
                 <plugins>
                     <plugin>
@@ -223,35 +234,6 @@
 
         <profile>
             <id>locationtech</id>
-            <!-- TODO locationtech hudson build fails on uploading javadocs for some modules - figure out why -->
-            <!--<build>
-                <plugins>
-                    <plugin>
-                        <groupId>net.alchim31.maven</groupId>
-                        <artifactId>scala-maven-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>attach-javadoc</id>
-                                <goals>
-                                    <goal>doc-jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-javadoc-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>attach-javadocs</id>
-                                <goals>
-                                    <goal>jar</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>-->
             <distributionManagement>
                 <repository>
                     <id>repo.eclipse.org</id>
@@ -267,35 +249,10 @@
         </profile>
 
         <profile>
-            <id>eclipse-sign</id>
-            <build>
-                <plugins>
-                    <plugin>
-                        <groupId>org.eclipse.cbi.maven.plugins</groupId>
-                        <artifactId>eclipse-jarsigner-plugin</artifactId>
-                        <version>1.1.3</version>
-                        <configuration>
-                            <signerUrl>http://locationtech.org:31338/sign</signerUrl>
-                            <excludeInnerJars>true</excludeInnerJars>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <id>sign</id>
-                                <goals>
-                                    <goal>sign</goal>
-                                </goals>
-                                <phase>verify</phase>
-                            </execution>
-                        </executions>
-                    </plugin>
-                </plugins>
-            </build>
-            <pluginRepositories>
-                <pluginRepository>
-                    <id>cbi-releases</id>
-                    <url>https://repo.eclipse.org/content/repositories/cbi-releases/</url>
-                </pluginRepository>
-            </pluginRepositories>
+            <id>benchmarks</id>
+            <modules>
+                <module>benchmarks</module>
+            </modules>
         </profile>
     </profiles>
 
@@ -311,17 +268,6 @@
             <!-- geomesa modules -->
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-accumulo-compute_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-accumulo-compute_${scala.binary.version}</artifactId>
-                <classifier>shaded</classifier>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-accumulo-datastore_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -332,22 +278,13 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-accumulo-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-accumulo-jobs_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-accumulo-raster-distributed-runtime_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-accumulo-raster_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-accumulo-security_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -364,6 +301,7 @@
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-archetypes-gs-plugin_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
+                <type>pom</type>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
@@ -382,6 +320,12 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-arrow-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-arrow-tools_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -392,23 +336,25 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-bigtable-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-bigtable-tools_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-blobstore-api_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-blobstore-web_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-cassandra-datastore_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-cassandra-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
@@ -458,11 +404,6 @@
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-convert-redis-cache_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-convert-scripting_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -524,6 +465,7 @@
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-fs-gs-plugin_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
+                <type>pom</type>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
@@ -572,7 +514,18 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-geojson-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-geojson-rest_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-gt-partitioning_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -597,13 +550,39 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-hbase-distributed-runtime_${scala.binary.version}</artifactId>
+                <artifactId>geomesa-hbase-rpc_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-hbase-server_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-hbase-server-hbase2_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-hbase-server-hbase1_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-hbase-distributed-runtime-hbase1_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-hbase-distributed-runtime-hbase2_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-hbase-gs-plugin_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
+                <type>pom</type>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
@@ -637,6 +616,12 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-kafka-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-kafka-tools_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -659,6 +644,7 @@
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-kudu-gs-plugin_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
+                <type>pom</type>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
@@ -677,17 +663,33 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-lambda-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-lambda-tools_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-metrics_${scala.binary.version}</artifactId>
+                <artifactId>geomesa-metrics-core_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-native-api_${scala.binary.version}</artifactId>
+                <artifactId>geomesa-metrics-cloudwatch_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-metrics-ganglia_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-metrics-graphite_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -709,6 +711,7 @@
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-redis-gs-plugin_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
+                <type>pom</type>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
@@ -753,17 +756,18 @@
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-stream-gs-plugin_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <type>pom</type>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-utils_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-web-core_${scala.binary.version}</artifactId>
-                <version>${project.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.locationtech.geomesa</groupId>
-                <artifactId>geomesa-web-data_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -785,6 +789,20 @@
             <dependency>
                 <groupId>org.locationtech.geomesa</groupId>
                 <artifactId>geomesa-accumulo-datastore_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <classifier>tests</classifier>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-hbase-datastore_${scala.binary.version}</artifactId>
+                <version>${project.version}</version>
+                <classifier>tests</classifier>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.geomesa</groupId>
+                <artifactId>geomesa-kafka-datastore_${scala.binary.version}</artifactId>
                 <version>${project.version}</version>
                 <classifier>tests</classifier>
                 <scope>test</scope>
@@ -857,7 +875,7 @@
             <dependency>
                 <groupId>org.locationtech.spatial4j</groupId>
                 <artifactId>spatial4j</artifactId>
-                <version>0.7</version>
+                <version>${spatial4j.version}</version>
             </dependency>
             <dependency>
                 <!-- 'works with' due to license issues -->
@@ -956,7 +974,7 @@
             <dependency>
                 <groupId>org.postgresql</groupId>
                 <artifactId>postgresql</artifactId>
-                <version>42.2.2</version>
+                <version>42.2.12</version>
             </dependency>
             <dependency>
                 <groupId>org.geotools</groupId>
@@ -976,6 +994,34 @@
                 </exclusions>
             </dependency>
             <dependency>
+                <groupId>org.ejml</groupId>
+                <artifactId>ejml-core</artifactId>
+                <version>${ejml.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.ejml</groupId>
+                <artifactId>ejml-simple</artifactId>
+                <version>${ejml.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.ejml</groupId>
+                        <artifactId>ejml-cdense</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.ejml</groupId>
+                        <artifactId>ejml-dsparse</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.ejml</groupId>
+                        <artifactId>ejml-fdense</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.ejml</groupId>
+                        <artifactId>ejml-zdense</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
                 <groupId>org.geotools</groupId>
                 <artifactId>gt-referencing</artifactId>
                 <version>${gt.version}</version>
@@ -990,13 +1036,12 @@
                         <groupId>jgridshift</groupId>
                         <artifactId>jgridshift</artifactId>
                     </exclusion>
+                    <exclusion>
+                        <!-- excluded due to license issues -->
+                        <groupId>jgridshift</groupId>
+                        <artifactId>jgridshift-core</artifactId>
+                    </exclusion>
                 </exclusions>
-            </dependency>
-            <dependency>
-                <groupId>com.googlecode.efficient-java-matrix-library</groupId>
-                <artifactId>core</artifactId>
-                <!-- match dependency version used by gt-referencing for convenience -->
-                <version>0.26</version>
             </dependency>
             <dependency>
                 <groupId>org.geotools</groupId>
@@ -1012,6 +1057,11 @@
                         <!-- excluded due to license issues -->
                         <groupId>jgridshift</groupId>
                         <artifactId>jgridshift</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <!-- excluded due to license issues -->
+                        <groupId>jgridshift</groupId>
+                        <artifactId>jgridshift-core</artifactId>
                     </exclusion>
                 </exclusions>
             </dependency>
@@ -1029,6 +1079,11 @@
                         <!-- excluded due to license issues -->
                         <groupId>jgridshift</groupId>
                         <artifactId>jgridshift</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <!-- excluded due to license issues -->
+                        <groupId>jgridshift</groupId>
+                        <artifactId>jgridshift-core</artifactId>
                     </exclusion>
                 </exclusions>
             </dependency>
@@ -1327,7 +1382,23 @@
                 <artifactId>org.eclipse.emf.ecore.xmi</artifactId>
                 <version>2.15.0</version>
             </dependency>
-
+            <dependency>
+                <groupId>commons-beanutils</groupId>
+                <artifactId>commons-beanutils</artifactId>
+                <version>1.9.3</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-configuration</groupId>
+                <artifactId>commons-configuration</artifactId>
+                <version>1.6</version>
+                <exclusions>
+                    <exclusion>
+                        <!-- exclude commons-beanutils-core, which doesn't exist in 1.9.3 -->
+                        <groupId>commons-beanutils</groupId>
+                        <artifactId>commons-beanutils-core</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
             <dependency>
                 <groupId>commons-pool</groupId>
                 <artifactId>commons-pool</artifactId>
@@ -1379,13 +1450,6 @@
                 <artifactId>mango-core</artifactId>
                 <version>1.2.0</version>
             </dependency>
-            <!-- note: accumulo uses guava 17, but geotools uses 11. The methods we use happen to exist
-                 in both, but try to use guava sparingly. -->
-            <dependency>
-                <groupId>com.google.guava</groupId>
-                <artifactId>guava</artifactId>
-                <version>17.0</version>
-            </dependency>
             <dependency>
                 <groupId>com.github.ben-manes.caffeine</groupId>
                 <artifactId>caffeine</artifactId>
@@ -1394,12 +1458,18 @@
             <dependency>
                 <groupId>com.google.code.gson</groupId>
                 <artifactId>gson</artifactId>
-                <version>2.8.1</version>
+                <version>2.8.9</version>
             </dependency>
             <dependency>
                 <groupId>com.jayway.jsonpath</groupId>
                 <artifactId>json-path</artifactId>
                 <version>2.2.0</version>
+            </dependency>
+            <!-- used by json-path (1.1) and hadoop-auth (1.2)-->
+            <dependency>
+                <groupId>net.minidev</groupId>
+                <artifactId>accessors-smart</artifactId>
+                <version>1.1</version>
                 <exclusions>
                     <!--
                         excluded due to spark conflicts. note:
@@ -1412,6 +1482,12 @@
                         <artifactId>asm</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+            <!-- used by json-path (2.2.1) and hadoop-auth (2.3)-->
+            <dependency>
+                <groupId>net.minidev</groupId>
+                <artifactId>json-smart</artifactId>
+                <version>2.2.1</version>
             </dependency>
             <!-- used by hbase -->
             <dependency>
@@ -1456,7 +1532,7 @@
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-compress</artifactId>
-                <version>1.18</version>
+                <version>1.20</version>
             </dependency>
             <dependency>
                 <groupId>commons-cli</groupId>
@@ -1480,8 +1556,13 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
+                <artifactId>commons-collections4</artifactId>
+                <version>4.4</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
                 <artifactId>commons-text</artifactId>
-                <version>1.4</version>
+                <version>1.6</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.avro</groupId>
@@ -1574,12 +1655,12 @@
             <dependency>
                 <groupId>org.parboiled</groupId>
                 <artifactId>parboiled-scala_${scala.binary.version}</artifactId>
-                <version>1.1.7</version>
+                <version>1.2.0</version>
             </dependency>
             <dependency>
                 <groupId>org.parboiled</groupId>
                 <artifactId>parboiled-core</artifactId>
-                <version>1.1.7</version>
+                <version>1.2.0</version>
             </dependency>
             <dependency>
                 <groupId>io.dropwizard.metrics</groupId>
@@ -1625,23 +1706,28 @@
             <dependency>
                 <groupId>org.apache.curator</groupId>
                 <artifactId>curator-client</artifactId>
-                <version>4.0.1</version>
+                <version>4.3.0</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.curator</groupId>
                 <artifactId>curator-framework</artifactId>
-                <version>4.0.1</version>
+                <version>4.3.0</version>
             </dependency>
             <dependency>
                 <groupId>org.apache.curator</groupId>
                 <artifactId>curator-recipes</artifactId>
-                <version>4.0.1</version>
+                <version>4.3.0</version>
+            </dependency>
+            <!-- standardize httpcomponents version, used by various libraries including hadoop and thrift -->
+            <dependency>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpclient</artifactId>
+                <version>4.5.3</version>
             </dependency>
             <dependency>
-                <groupId>org.apache.curator</groupId>
-                <artifactId>curator-test</artifactId>
-                <version>4.0.1</version>
-                <scope>test</scope>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpcore</artifactId>
+                <version>4.4.6</version>
             </dependency>
             <dependency>
                 <groupId>com.thoughtworks.paranamer</groupId>
@@ -1651,12 +1737,12 @@
             <dependency>
                 <groupId>com.twitter</groupId>
                 <artifactId>chill_${scala.binary.version}</artifactId>
-                <version>0.8.0</version>
+                <version>0.8.5</version>
             </dependency>
             <dependency>
                 <groupId>com.twitter</groupId>
                 <artifactId>chill-java</artifactId>
-                <version>0.8.0</version>
+                <version>0.8.5</version>
             </dependency>
             <dependency>
                 <groupId>com.clearspring.analytics</groupId>
@@ -1698,19 +1784,6 @@
                 </exclusions>
             </dependency>
             <dependency>
-                <groupId>org.apache.arrow</groupId>
-                <artifactId>arrow-vector</artifactId>
-                <version>${arrow.version}</version>
-                <classifier>tests</classifier>
-                <scope>test</scope>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.slf4j</groupId>
-                        <artifactId>*</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
-            <dependency>
                 <groupId>redis.clients</groupId>
                 <artifactId>jedis</artifactId>
                 <version>3.0.1</version>
@@ -1738,8 +1811,13 @@
             <dependency>
                 <groupId>com.fasterxml.jackson.module</groupId>
                 <artifactId>jackson-module-scala_${scala.binary.version}</artifactId>
-                <version>${fasterxml.jackson.databind.version}</version>
+                <version>${fasterxml.jackson.version}</version>
                 <scope>provided</scope> <!-- from spark -->
+            </dependency>
+            <dependency>
+                <groupId>org.ehcache</groupId>
+                <artifactId>sizeof</artifactId>
+                <version>0.3.0</version>
             </dependency>
             <dependency>
                 <groupId>org.scalatra</groupId>
@@ -1768,12 +1846,51 @@
                 <artifactId>accumulo-core</artifactId>
                 <version>${accumulo.version}</version>
                 <scope>provided</scope>
+                <exclusions>
+                    <!-- exclude hadoop 3+ only jars, since we're still compiling against haddop 2.8 -->
+                    <exclusion>
+                        <groupId>org.apache.hadoop</groupId>
+                        <artifactId>hadoop-client-api</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.hadoop</groupId>
+                        <artifactId>hadoop-client-runtime</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.apache.accumulo</groupId>
                 <artifactId>accumulo-server-base</artifactId>
                 <version>${accumulo.version}</version>
                 <scope>provided</scope>
+                <exclusions>
+                    <!-- exclude hadoop 3+ only jars, since we're still compiling against haddop 2.8 -->
+                    <exclusion>
+                        <groupId>org.apache.hadoop</groupId>
+                        <artifactId>hadoop-client-api</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.hadoop</groupId>
+                        <artifactId>hadoop-client-runtime</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.accumulo</groupId>
+                <artifactId>accumulo-start</artifactId>
+                <version>${accumulo.version}</version>
+                <scope>provided</scope>
+                <exclusions>
+                    <!-- exclude hadoop 3+ only jars, since we're still compiling against haddop 2.8 -->
+                    <exclusion>
+                        <groupId>org.apache.hadoop</groupId>
+                        <artifactId>hadoop-client-api</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.hadoop</groupId>
+                        <artifactId>hadoop-client-runtime</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.apache.accumulo</groupId>
@@ -1783,7 +1900,7 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.accumulo</groupId>
-                <artifactId>accumulo-start</artifactId>
+                <artifactId>accumulo-hadoop-mapreduce</artifactId>
                 <version>${accumulo.version}</version>
                 <scope>provided</scope>
             </dependency>
@@ -1880,9 +1997,77 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
-                <artifactId>hadoop-minicluster</artifactId>
+                <artifactId>hadoop-hdfs-client</artifactId>
                 <version>${hadoop.version}</version>
-                <scope>test</scope>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-mapreduce-client-shuffle</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-yarn-client</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-yarn-server-common</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-yarn-server-nodemanager</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-yarn-server-web-proxy</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+                <scope>provided</scope>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.google.guava</groupId>
+                        <artifactId>listenablefuture</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.google.guava</groupId>
+                        <artifactId>failureaccess</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.checkerframework</groupId>
+                        <artifactId>checker-qual</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.google.j2objc</groupId>
+                        <artifactId>j2objc-annotations</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.google.errorprone</groupId>
+                        <artifactId>error_prone_annotations</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>animal-sniffer-annotations</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.apache.zookeeper</groupId>
@@ -1908,6 +2093,10 @@
                     <exclusion>
                         <groupId>io.netty</groupId>
                         <artifactId>netty</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.github.spotbugs</groupId>
+                        <artifactId>spotbugs-annotations</artifactId>
                     </exclusion>
                 </exclusions>
                 <scope>provided</scope>
@@ -1941,20 +2130,12 @@
                 <artifactId>hbase-server</artifactId>
                 <version>${hbase.version}</version>
                 <scope>provided</scope>
-                <exclusions>
-                    <exclusion>
-                        <groupId>tomcat</groupId>
-                        <artifactId>jasper-compiler</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>tomcat</groupId>
-                        <artifactId>jasper-runtime</artifactId>
-                    </exclusion>
-                    <exclusion>
-                        <groupId>org.mortbay.jetty</groupId>
-                        <artifactId>*</artifactId>
-                    </exclusion>
-                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hbase</groupId>
+                <artifactId>hbase-mapreduce</artifactId>
+                <version>${hbase.version}</version>
+                <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.hbase</groupId>
@@ -1974,12 +2155,12 @@
                 <version>${hbase.version}</version>
                 <scope>provided</scope>
             </dependency>
+            <!-- pulled in by hbase but version is incorrect... -->
             <dependency>
-                <groupId>org.apache.hbase</groupId>
-                <artifactId>hbase-common</artifactId>
-                <version>${hbase.version}</version>
-                <classifier>tests</classifier>
-                <scope>test</scope>
+                <groupId>org.glassfish</groupId>
+                <artifactId>javax.el</artifactId>
+                <version>3.0.1-b11</version>
+                <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>com.datastax.cassandra</groupId>
@@ -2070,13 +2251,13 @@
                 <!-- marked provided due to license issues -->
                 <groupId>jline</groupId>
                 <artifactId>jline</artifactId>
-                <version>1.0</version>
+                <version>2.11</version>
                 <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>com.beust</groupId>
                 <artifactId>jcommander</artifactId>
-                <version>1.48</version>
+                <version>1.78</version>
             </dependency>
 
             <!-- test dependencies -->
@@ -2090,6 +2271,12 @@
                 <groupId>log4j</groupId>
                 <artifactId>log4j</artifactId>
                 <version>${log4j.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>jul-to-slf4j</artifactId>
+                <version>${slf4j.version}</version>
                 <scope>test</scope>
             </dependency>
             <dependency>
@@ -2123,6 +2310,58 @@
                 <scope>test</scope>
             </dependency>
             <dependency>
+                <groupId>org.apache.accumulo</groupId>
+                <artifactId>accumulo-minicluster</artifactId>
+                <version>${accumulo.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hbase</groupId>
+                <artifactId>hbase-common</artifactId>
+                <version>${hbase.version}</version>
+                <classifier>tests</classifier>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-minicluster</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-hdfs</artifactId>
+                <type>test-jar</type>
+                <classifier>tests</classifier>
+                <version>${hadoop.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-minikdc</artifactId>
+                <version>${hadoop.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.curator</groupId>
+                <artifactId>curator-test</artifactId>
+                <version>4.3.0</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.arrow</groupId>
+                <artifactId>arrow-vector</artifactId>
+                <version>${arrow.version}</version>
+                <classifier>tests</classifier>
+                <scope>test</scope>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.slf4j</groupId>
+                        <artifactId>*</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
                 <groupId>org.scalatra</groupId>
                 <artifactId>scalatra-specs2_${scala.binary.version}</artifactId>
                 <version>${scalatra.version}</version>
@@ -2135,6 +2374,11 @@
         <testResources>
             <testResource>
                 <directory>src/test/resources</directory>
+                <filtering>false</filtering>
+            </testResource>
+            <testResource>
+                <!-- user.dir points to the directory mvn was executed in, i.e. the top-level folder -->
+                <directory>${user.dir}/build/test/resources</directory>
                 <filtering>false</filtering>
             </testResource>
         </testResources>
@@ -2182,6 +2426,19 @@
                     <artifactId>maven-jar-plugin</artifactId>
                     <!-- 3.1.0 was released 2018-04-06. -->
                     <version>3.1.0</version>
+                    <executions>
+                        <execution>
+                            <!-- binds to the default test-jar goal to exclude logging configs -->
+                            <id>default</id>
+                            <configuration>
+                                <excludes>
+                                    <exclude>log4j.properties</exclude>
+                                    <exclude>log4j.xml</exclude>
+                                    <exclude>logging.properties</exclude>
+                                </excludes>
+                            </configuration>
+                        </execution>
+                    </executions>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -2198,8 +2455,8 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-assembly-plugin</artifactId>
-                    <!-- 3.1.0 was released 2017-08-13. -->
-                    <version>3.1.0</version>
+                    <!-- 3.3.0 was released 2020-04-27. -->
+                    <version>3.3.0</version>
                     <configuration>
                       <tarLongFileMode>posix</tarLongFileMode>
                     </configuration>
@@ -2242,31 +2499,69 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <!-- 3.0.0-M1 was released 2018-11-07. -->
-                    <version>3.0.0-M1</version>
+                    <!-- 3.0.0-M4 was released 2019-11-13 -->
+                    <version>3.0.0-M4</version>
                     <dependencies>
                         <dependency>
                             <groupId>org.apache.maven.surefire</groupId>
                             <artifactId>surefire-junit4</artifactId>
-                            <version>3.0.0-M1</version>
+                            <version>3.0.0-M4</version>
                         </dependency>
                     </dependencies>
                     <configuration>
                         <forkCount>${test.fork.count}</forkCount>
                         <reuseForks>${test.fork.reuse}</reuseForks>
                         <forkedProcessTimeoutInSeconds>0</forkedProcessTimeoutInSeconds>
+<<<<<<< HEAD
+=======
+                        <rerunFailingTestsCount>1</rerunFailingTestsCount> <!-- re-try intermittent failures -->
+>>>>>>> main
                         <enableAssertions>${test.enable.assertions}</enableAssertions>
                         <includes>
                             <include>**/*Test.java</include>
                         </includes>
                         <argLine>${maven.test.jvmargs}</argLine>
+                        <systemPropertyVariables>
+                            <java.net.preferIPv4Stack>true</java.net.preferIPv4Stack>
+                            <java.awt.headless>true</java.awt.headless>
+                            <user.timezone>UTC</user.timezone>
+                            <user.language>en</user.language>
+                            <user.region>US</user.region>
+                            <geomesa.scan.ranges.target>500</geomesa.scan.ranges.target>
+                            <geomesa.accumulo.test.tablet.servers>1</geomesa.accumulo.test.tablet.servers>
+                            <geomesa.hbase.test.region.servers>1</geomesa.hbase.test.region.servers>
+                            <java.util.logging.config.file>logging.properties</java.util.logging.config.file>
+                            <org.jboss.logging.provider>slf4j</org.jboss.logging.provider>
+                        </systemPropertyVariables>
+                        <!-- these can interfere with the mini clusters we spin up for unit tests -->
+                        <excludedEnvironmentVariables>HADOOP_HOME,ZOOKEEPER_HOME,ACCUMULO_HOME,HBASE_HOME</excludedEnvironmentVariables>
                     </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>3.0.0-M3</version>
+                    <executions>
+                        <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <testSourceDirectory>src/test/scala</testSourceDirectory>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-deploy-plugin</artifactId>
-                    <!-- 3.0.0-M1 was released 2018-09-23. -->
-                    <version>3.0.0-M1</version>
+                    <!-- 3.0.0-M2 was released 2021-12-27. -->
+                    <version>3.0.0-M2</version>
+                    <configuration>
+                        <deployAtEnd>true</deployAtEnd>
+                    </configuration>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -2293,6 +2588,7 @@
                     <version>2.5.3</version>
                     <configuration>
                         <autoVersionSubmodules>true</autoVersionSubmodules>
+                        <tagNameFormat>geomesa-@{project.version}</tagNameFormat>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -2334,11 +2630,12 @@
                         <validHeaders>
                             <validHeader>build/copyright/ccri.txt</validHeader>
                             <validHeader>build/copyright/ccri-dstl.txt</validHeader>
-                            <validHeader>build/copyright/ccri-dstl-2016.txt</validHeader>
+                            <validHeader>build/copyright/ccri-dstl-mitre.txt</validHeader>
                             <validHeader>build/copyright/dstl.txt</validHeader>
                             <validHeader>build/copyright/ibm.txt</validHeader>
                             <validHeader>build/copyright/ibm-ccri.txt</validHeader>
                             <validHeader>build/copyright/mitre.txt</validHeader>
+                            <validHeader>build/copyright/ccri-mitre.txt</validHeader>
                         </validHeaders>
                         <properties>
                             <year>${copyright.year}</year>
@@ -2455,7 +2752,7 @@
                 <artifactId>maven-resources-plugin</artifactId>
                 <executions>
                     <execution>
-                        <id>copy-resources</id>
+                        <id>copy-readme</id>
                         <phase>validate</phase>
                         <goals>
                             <goal>copy-resources</goal>
@@ -2468,6 +2765,26 @@
                                     <directory>build</directory>
                                     <includes>
                                         <include>README.md</include>
+                                    </includes>
+                                    <filtering>true</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>copy-images</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.basedir}/.github</outputDirectory>
+                            <overwrite>true</overwrite>
+                            <resources>
+                                <resource>
+                                    <directory>build</directory>
+                                    <includes>
+                                        <include>*.svg</include>
                                     </includes>
                                     <filtering>true</filtering>
                                 </resource>
@@ -2527,20 +2844,24 @@
                                 <bannedDependencies>
                                     <excludes combine.children="append">
                                         <exclude>*:*_2.10</exclude>
+                                        <exclude>*:*_2.11</exclude>
                                     </excludes>
                                 </bannedDependencies>
                                 <requireProperty>
                                     <message>property scala.version must be set</message>
                                     <property>scala.version</property>
-                                    <regexMessage>property scala.version doesn't match expected compiler version (2.11.*)</regexMessage>
-                                    <regex>2.11.*</regex>
+                                    <regexMessage>property scala.version doesn't match expected compiler version</regexMessage>
+                                    <regex>2.12.*</regex>
                                 </requireProperty>
                                 <requireProperty>
                                     <message>property scala.binary.version must be set</message>
                                     <property>scala.binary.version</property>
                                     <regexMessage>property scala.binary.version doesn't match compiler version</regexMessage>
-                                    <regex>2.11</regex>
+                                    <regex>2.12</regex>
                                 </requireProperty>
+                                <requireMavenVersion>
+                                    <version>[3.5.2,)</version>
+                                </requireMavenVersion>
                             </rules>
                         </configuration>
                     </execution>
@@ -2553,7 +2874,7 @@
         <connection>scm:git:git@github.com:locationtech/geomesa.git</connection>
         <developerConnection>scm:git:git@github.com:locationtech/geomesa.git</developerConnection>
         <url>https://github.com/locationtech/geomesa</url>
-        <tag>geomesa_2.11-2.4.0</tag>
+        <tag>geomesa_2.11-3.1.0</tag>
     </scm>
 
     <developers>
@@ -2600,13 +2921,25 @@
                 <enabled>false</enabled>
             </snapshots>
         </repository>
+        <!-- geotools -->
         <repository>
+<<<<<<< HEAD
             <id>locationtech-releases</id>
             <url>https://repo.eclipse.org/content/groups/releases</url>
+=======
+            <id>osgeo</id>
+            <url>https://repo.osgeo.org/repository/release</url>
+>>>>>>> main
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
         </repository>
+        <!-- confluent -->
+        <repository>
+            <id>confluent</id>
+            <url>https://packages.confluent.io/maven/</url>
+        </repository>
+        <!-- nightly geomesa snapshots -->
         <repository>
             <id>locationtech-snapshots</id>
             <url>https://repo.eclipse.org/content/groups/snapshots</url>
@@ -2617,6 +2950,7 @@
                 <enabled>true</enabled>
             </snapshots>
         </repository>
+<<<<<<< HEAD
         <!-- geotools -->
         <repository>
             <id>osgeo</id>
@@ -2625,6 +2959,9 @@
                 <enabled>false</enabled>
             </snapshots>
         </repository>
+=======
+        <!-- nightly geotools snapshots -->
+>>>>>>> main
         <repository>
             <id>osgeo-snapshots</id>
             <url>https://repo.osgeo.org/repository/snapshot</url>
@@ -2634,10 +2971,13 @@
             <snapshots>
                 <enabled>true</enabled>
             </snapshots>
+<<<<<<< HEAD
         </repository>
         <repository>
             <id>confluent</id>
             <url>https://packages.confluent.io/maven/</url>
+=======
+>>>>>>> main
         </repository>
     </repositories>
 

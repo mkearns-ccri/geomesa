@@ -1,6 +1,10 @@
 Redis Data Store
 ================
 
+.. note::
+
+    GeoMesa currently supports Redis version |redis_version|.
+
 The GeoMesa Redis Data Store is an implementation of the GeoTools ``DataStore`` interface that is backed
 by `Redis <https://redis.io/>`__. It is found in the ``geomesa-redis`` directory of the GeoMesa
 source distribution.
@@ -25,4 +29,3 @@ To get started with the Redis Data Store, try the :doc:`/tutorials/geomesa-quick
     commandline
     configuration
     index_config
-    visibilities

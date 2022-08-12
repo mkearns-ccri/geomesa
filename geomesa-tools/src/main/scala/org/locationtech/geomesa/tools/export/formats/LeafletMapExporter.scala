@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,12 +11,14 @@ package org.locationtech.geomesa.tools.export.formats
 import java.io._
 import java.nio.charset.StandardCharsets
 
+import com.google.gson.stream.JsonWriter
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.commons.io.FilenameUtils
-import org.geotools.geojson.feature.FeatureJSON
+import org.locationtech.geomesa.features.serialization.GeoJsonSerializer
 import org.locationtech.geomesa.tools.Command
+import org.locationtech.geomesa.tools.`export`.formats.FeatureExporter.ExportStream
 import org.locationtech.geomesa.tools.export.ExportCommand.ExportParams
-import org.locationtech.geomesa.tools.export.formats.FeatureExporter.{ByteCounter, ByteCounterExporter}
+import org.locationtech.geomesa.tools.export.formats.FeatureExporter.ByteCounterExporter
 import org.locationtech.geomesa.tools.utils.Prompt
 import org.locationtech.geomesa.utils.io.{PathUtils, WithClose}
 import org.locationtech.jts.geom.{Coordinate, Geometry}
@@ -25,68 +27,70 @@ import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
 import scala.collection.JavaConversions._
 import scala.io.Source
 
-class LeafletMapExporter(os: OutputStream, counter: ByteCounter)
-    extends ByteCounterExporter(counter) with LazyLogging {
+class LeafletMapExporter(stream: ExportStream) extends ByteCounterExporter(stream) with LazyLogging {
 
-  private val json = new FeatureJSON()
-  private val writer = new OutputStreamWriter(os, StandardCharsets.UTF_8)
   private val coordMap = scala.collection.mutable.Map.empty[Coordinate, Int].withDefaultValue(0)
 
-  private var first = true
+  private var writer: OutputStreamWriter = _
+  private var jsonWriter: JsonWriter = _
+  private var jsonSerializer: GeoJsonSerializer = _
+
   private var featureInfo = ""
 
   override def start(sft: SimpleFeatureType): Unit = {
     featureInfo = LeafletMapExporter.getFeatureInfo(sft)
+    writer = new OutputStreamWriter(stream.os, StandardCharsets.UTF_8)
+    jsonWriter = GeoJsonSerializer.writer(writer)
     writer.write(LeafletMapExporter.IndexHead)
-    writer.write("""var points = {"type":"FeatureCollection","features":[""")
+    writer.write("var points = ")
+    writer.flush()
+    jsonSerializer = new GeoJsonSerializer(sft)
+    jsonSerializer.startFeatureCollection(jsonWriter)
   }
 
   override def export(features: Iterator[SimpleFeature]): Option[Long] = {
     var count = 0L
-    if (first && features.hasNext) {
-      first = false
-      write(features.next)
-      count += 1L
-    }
     while (features.hasNext) {
-      writer.write(',')
-      write(features.next)
+      val feature = features.next
+      jsonSerializer.write(jsonWriter, feature)
+      val geom = feature.getDefaultGeometry.asInstanceOf[Geometry]
+      if (geom != null) {
+        geom.getCoordinates.foreach(c => coordMap(c) += 1)
+      }
       count += 1L
     }
-    writer.flush()
+    jsonWriter.flush()
     Some(count)
   }
 
-  private def write(feature: SimpleFeature): Unit = {
-    json.writeFeature(feature, writer)
-    val geom = feature.getDefaultGeometry.asInstanceOf[Geometry]
-    if (geom != null) {
-      geom.getCoordinates.foreach(c => coordMap(c) += 1)
-    }
-  }
-
   override def close(): Unit  = {
-    // Finish writing GeoJson
-    writer.write("]};\n\n")
-    writer.write(featureInfo)
-    // Write Heatmap Data
-    writer.write("var heat = L.heatLayer([\n")
-    if (coordMap.nonEmpty) {
-      val max = coordMap.maxBy(_._2)._2
-      val iter = coordMap.iterator
-      iter.take(1).foreach { case (coord, weight) =>
-        writer.write(s"        [${coord.y}, ${coord.x}, ${weight / max}]")
-      }
-      iter.foreach { case (coord, weight) =>
-        writer.write(s",\n        [${coord.y}, ${coord.x}, ${weight / max}]")
-      }
-    }
-    writer.write("\n    ], { radius: 25 });\n\n")
-    writer.write(LeafletMapExporter.IndexTail)
-    writer.close()
+    // finish writing GeoJson
+    if (writer != null) {
+      try {
+        jsonSerializer.endFeatureCollection(jsonWriter)
+        jsonWriter.flush()
 
-    if (first) {
-      Command.user.warn("No features were exported - the map will not render correctly")
+        writer.write(";\n\n")
+        writer.write(featureInfo)
+        // Write Heatmap Data
+        writer.write("var heat = L.heatLayer([\n")
+        if (coordMap.isEmpty) {
+          Command.user.warn("No features were exported - the map will not render correctly")
+        } else {
+          val max = coordMap.maxBy(_._2)._2
+          val iter = coordMap.iterator
+          iter.take(1).foreach { case (coord, weight) =>
+            writer.write(s"        [${coord.y}, ${coord.x}, ${weight / max}]")
+          }
+          iter.foreach { case (coord, weight) =>
+            writer.write(s",\n        [${coord.y}, ${coord.x}, ${weight / max}]")
+          }
+        }
+        writer.write("\n    ], { radius: 25 });\n\n")
+        writer.write(LeafletMapExporter.IndexTail)
+      } finally {
+        jsonWriter.close() // also closes writer and output stream
+      }
     }
   }
 }

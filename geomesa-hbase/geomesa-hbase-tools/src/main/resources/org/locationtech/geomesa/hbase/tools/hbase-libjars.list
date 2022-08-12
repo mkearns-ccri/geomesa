@@ -1,7 +1,14 @@
-hbase
 hbase-client
+hbase-common
+hbase-hadoop-compat
+hbase-hadoop2-compat
+hbase-metrics
 hbase-protocol
 hbase-server
+hbase-shaded-miscellaneous
+hbase-shaded-netty
+hbase-shaded-protobuf
+hbase-mapreduce
 htrace
 metrics-core-2
 metrics-core-3

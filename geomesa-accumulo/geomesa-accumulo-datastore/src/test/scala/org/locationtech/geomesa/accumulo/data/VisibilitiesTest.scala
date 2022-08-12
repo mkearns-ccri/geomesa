@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,27 +8,27 @@
 
 package org.locationtech.geomesa.accumulo.data
 
-import org.apache.accumulo.core.client.security.tokens.PasswordToken
-import org.apache.accumulo.core.security.Authorizations
 import org.geotools.data._
 import org.geotools.data.simple.SimpleFeatureStore
-import org.geotools.util.factory.Hints
 import org.geotools.filter.text.ecql.ECQL
+import org.geotools.util.factory.Hints
 import org.junit.runner.RunWith
-import org.locationtech.geomesa.accumulo.TestWithDataStore
+import org.locationtech.geomesa.accumulo.TestWithFeatureType
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.security.SecurityUtils
 import org.locationtech.geomesa.utils.collection.SelfClosingIterator
+import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
+import org.locationtech.geomesa.utils.io.WithClose
 import org.specs2.runner.JUnitRunner
 
 import scala.collection.JavaConversions._
 
 @RunWith(classOf[JUnitRunner])
-class VisibilitiesTest extends TestWithDataStore {
-
+class VisibilitiesTest extends TestWithFeatureType {
+  
   sequential
 
-  override val spec = "name:String:index=full,dtg:Date,*geom:Point:srid=4326"
+  override val spec = "name:String:index=full,dtg:Date,*geom:Point:srid=4326;geomesa.vis.required='true'"
 
   val privFeatures = (0 until 3).map { i =>
     val sf = ScalaSimpleFeature.create(sft, s"$i", s"name$i", "2012-01-02T05:06:07.000Z", "POINT(45.0 45.0)")
@@ -42,18 +42,9 @@ class VisibilitiesTest extends TestWithDataStore {
     sf.getUserData.put(Hints.USE_PROVIDED_FID, Boolean.box(true))
     sf
   }
-
-  val privDS = {
-    val connector = mockInstance.getConnector("priv", new PasswordToken(mockPassword))
-    connector.securityOperations().changeUserAuthorizations("priv", new Authorizations("user", "admin"))
-    DataStoreFinder.getDataStore(dsParams ++ Map(AccumuloDataStoreParams.ConnectorParam.key -> connector))
-  }
-  val unprivDS = {
-    val connector = mockInstance.getConnector("unpriv", new PasswordToken(mockPassword))
-    connector.securityOperations().changeUserAuthorizations("unpriv", new Authorizations("user"))
-    DataStoreFinder.getDataStore(dsParams ++ Map(AccumuloDataStoreParams.ConnectorParam.key -> connector))
-  }
-
+  val privDS = DataStoreFinder.getDataStore(dsParams ++ Map(AccumuloDataStoreParams.UserParam.key -> admin.name))
+  val unprivDS = DataStoreFinder.getDataStore(dsParams ++ Map(AccumuloDataStoreParams.UserParam.key -> user.name))
+  
   step {
     addFeatures(privFeatures ++ unprivFeatures)
   }
@@ -96,6 +87,38 @@ class VisibilitiesTest extends TestWithDataStore {
         val reader = privDS.getFeatureReader(new Query(sftName, filter), Transaction.AUTO_COMMIT)
         SelfClosingIterator(reader).toList must containTheSameElementsAs(privFeatures.take(2) ++ unprivFeatures)
       }
+    }
+
+    "allow privileged to update secured features" in {
+      WithClose(privDS.getFeatureWriter(sftName, ECQL.toFilter("IN('0')"), Transaction.AUTO_COMMIT)) { writer =>
+        writer.hasNext must beTrue
+        val f = writer.next
+        f.getUserData.put(SecurityUtils.FEATURE_VISIBILITY, "user")
+        writer.write()
+        writer.hasNext must beFalse
+      }
+      foreach(filters) { filter =>
+        val reader = privDS.getFeatureReader(new Query(sftName, filter), Transaction.AUTO_COMMIT)
+        SelfClosingIterator(reader).toList must containTheSameElementsAs(privFeatures.take(2) ++ unprivFeatures)
+        val unprivReader = unprivDS.getFeatureReader(new Query(sftName, filter), Transaction.AUTO_COMMIT)
+        SelfClosingIterator(unprivReader).toList must containTheSameElementsAs(privFeatures.take(1) ++ unprivFeatures)
+      }
+    }
+
+    "require visibilities when writing data" in {
+      val unsecured = ScalaSimpleFeature.create(sft, "6", "name6", "2012-01-02T05:06:07.000Z", "POINT(45.0 45.0)")
+      addFeature(unsecured) must throwAn[IllegalArgumentException]
+      val updated = SimpleFeatureTypes.copy(sft)
+      updated.getUserData.put("geomesa.vis.required", "false")
+      ds.updateSchema(updated.getTypeName, updated)
+      addFeature(unsecured) // should be ok
+      val query = new Query(sftName, ECQL.toFilter("IN('6')"))
+      // verify we can query the feature back out
+      SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList mustEqual Seq(unsecured)
+      updated.getUserData.put("geomesa.vis.required", "true")
+      ds.updateSchema(updated.getTypeName, updated)
+      // verify ReqVisFilter prevents the feature from coming back even though it exists in the table
+      SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList must beEmpty
     }
   }
 }

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -8,17 +8,15 @@
 
 package org.locationtech.geomesa.utils.zk
 
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.locks.{Lock, ReentrantLock}
-
+import org.apache.curator.framework.CuratorFramework
 import org.apache.curator.framework.recipes.locks.InterProcessSemaphoreMutex
-import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
-import org.apache.curator.retry.ExponentialBackoffRetry
 import org.locationtech.geomesa.index.utils.{DistributedLocking, Releasable}
+import org.locationtech.geomesa.utils.io.CloseQuietly
+
+import java.util.concurrent.TimeUnit
 
 trait ZookeeperLocking extends DistributedLocking {
 
-  protected def mock: Boolean
   protected def zookeepers: String
 
   /**
@@ -29,20 +27,12 @@ trait ZookeeperLocking extends DistributedLocking {
     * @return the lock
     */
   override protected def acquireDistributedLock(key: String): Releasable = {
-    if (mock) {
-      val lock = ZookeeperLocking.mockLocks.synchronized {
-        ZookeeperLocking.mockLocks.getOrElseUpdate(key, new ReentrantLock())
-      }
-      lock.lock()
-      Releasable(lock)
-    } else {
-      val (client, lock) = distributedLock(key)
-      try {
-        lock.acquire()
-        ZookeeperLocking.releasable(lock, client)
-      } catch {
-        case e: Exception => client.close(); throw e
-      }
+    val (client, lock) = distributedLock(key)
+    try {
+      lock.acquire()
+      ZookeeperLocking.releasable(lock, client)
+    } catch {
+      case e: Exception => CloseQuietly(client).foreach(e.addSuppressed); throw e
     }
   }
 
@@ -55,33 +45,21 @@ trait ZookeeperLocking extends DistributedLocking {
     * @return the lock, if obtained
     */
   override protected def acquireDistributedLock(key: String, timeOut: Long): Option[Releasable] = {
-    if (mock) {
-      val lock = ZookeeperLocking.mockLocks.synchronized {
-        ZookeeperLocking.mockLocks.getOrElseUpdate(key, new ReentrantLock())
-      }
-      if (lock.tryLock(timeOut, TimeUnit.MILLISECONDS)) {
-        Some(Releasable(lock))
+    val (client, lock) = distributedLock(key)
+    try {
+      if (lock.acquire(timeOut, TimeUnit.MILLISECONDS)) {
+        Some(ZookeeperLocking.releasable(lock, client))
       } else {
         None
       }
-    } else {
-      val (client, lock) = distributedLock(key)
-      try {
-        if (lock.acquire(timeOut, TimeUnit.MILLISECONDS)) {
-          Some(ZookeeperLocking.releasable(lock, client))
-        } else {
-          None
-        }
-      } catch {
-        case e: Exception => client.close(); throw e
-      }
+    } catch {
+      case e: Exception => CloseQuietly(client).foreach(e.addSuppressed); throw e
     }
   }
 
   private def distributedLock(key: String): (CuratorFramework, InterProcessSemaphoreMutex) = {
     val lockPath = if (key.startsWith("/")) key else s"/$key"
-    val backOff = new ExponentialBackoffRetry(1000, 3)
-    val client = CuratorFrameworkFactory.newClient(zookeepers, backOff)
+    val client = CuratorHelper.client(zookeepers).build()
     client.start()
     val lock = new InterProcessSemaphoreMutex(client, lockPath)
     (client, lock)
@@ -89,8 +67,6 @@ trait ZookeeperLocking extends DistributedLocking {
 }
 
 object ZookeeperLocking {
-
-  private lazy val mockLocks = scala.collection.mutable.Map.empty[String, Lock]
 
   // delegate lock that will close the curator client upon release
   def releasable(lock: InterProcessSemaphoreMutex, client: CuratorFramework): Releasable =

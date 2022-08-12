@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -18,7 +18,6 @@ import com.typesafe.config.{ConfigFactory, ConfigValueFactory}
 import org.apache.commons.csv.CSVFormat
 import org.geotools.util.factory.Hints
 import org.junit.runner.RunWith
-import org.locationtech.geomesa.convert.SimpleFeatureConverters
 import org.locationtech.geomesa.convert2.SimpleFeatureConverter
 import org.locationtech.geomesa.utils.geotools.SimpleFeatureTypes
 import org.locationtech.geomesa.utils.geotools.converters.FastConverter
@@ -33,55 +32,53 @@ class DelimitedTextConverterTest extends Specification {
 
   sequential
 
-  "DelimitedTextConverter" should {
 
-    val data = Seq(
-      """1,hello,45.0,45.0""",
-      """2,world,90.0,90.0""",
-      """willfail,hello""").mkString("\n")
+  val data = Seq(
+    """1,hello,45.0,45.0""",
+    """2,world,90.0,90.0""",
+    """willfail,hello""").mkString("\n")
 
-    val conf = ConfigFactory.parseString(
-      """
-        | {
-        |   type         = "delimited-text",
-        |   format       = "DEFAULT",
-        |   id-field     = "md5(string2bytes($0))",
-        |   fields = [
-        |     { name = "oneup",    transform = "$1" },
-        |     { name = "phrase",   transform = "concat($1, $2)" },
-        |     { name = "lat",      transform = "$3::double" },
-        |     { name = "lon",      transform = "$4::double" },
-        |     { name = "lit",      transform = "'hello'" },
-        |     { name = "geom",     transform = "point($lat, $lon)" }
-        |     { name = "l1",       transform = "concat($lit, $lit)" }
-        |     { name = "l2",       transform = "concat($l1,  $lit)" }
-        |     { name = "l3",       transform = "concat($l2,  $lit)" }
-        |   ]
-        | }
+  val conf = ConfigFactory.parseString(
+    """
+      | {
+      |   type         = "delimited-text",
+      |   format       = "DEFAULT",
+      |   id-field     = "md5(string2bytes($0))",
+      |   fields = [
+      |     { name = "oneup",    transform = "$1" },
+      |     { name = "phrase",   transform = "concat($1, $2)" },
+      |     { name = "lat",      transform = "$3::double" },
+      |     { name = "lon",      transform = "$4::double" },
+      |     { name = "lit",      transform = "'hello'" },
+      |     { name = "geom",     transform = "point($lat, $lon)" }
+      |     { name = "l1",       transform = "concat($lit, $lit)" }
+      |     { name = "l2",       transform = "concat($l1,  $lit)" }
+      |     { name = "l3",       transform = "concat($l2,  $lit)" }
+      |   ]
+      | }
       """.stripMargin)
 
-    val sft = SimpleFeatureTypes.createType(ConfigFactory.load("sft_testsft.conf"))
+  val sft = SimpleFeatureTypes.createType(ConfigFactory.load("sft_testsft.conf"))
+
+  "DelimitedTextConverter" should {
 
     "be built from a conf" >> {
+      SimpleFeatureConverter(sft, conf).close() must not(throwAn[Exception])
+    }
+
+    "process some data" >> {
       val res = WithClose(SimpleFeatureConverter(sft, conf)) { converter =>
         WithClose(converter.process(new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))))(_.toList)
       }
-
-      "and process some data" >> {
-        res.size must be equalTo 2
-        res(0).getAttribute("phrase").asInstanceOf[String] must be equalTo "1hello"
-        res(1).getAttribute("phrase").asInstanceOf[String] must be equalTo "2world"
-      }
-
-      "handle more derived fields than input fields" >> {
-        res(0).getAttribute("oneup").asInstanceOf[String] must be equalTo "1"
-      }
-
-      "correctly identify feature IDs based on lines" >> {
-        val hashing = Hashing.md5()
-        res(0).getID mustEqual hashing.hashBytes("1,hello,45.0,45.0".getBytes(StandardCharsets.UTF_8)).toString
-        res(1).getID mustEqual hashing.hashBytes("2,world,90.0,90.0".getBytes(StandardCharsets.UTF_8)).toString
-      }
+      res.size must be equalTo 2
+      res(0).getAttribute("phrase").asInstanceOf[String] must be equalTo "1hello"
+      res(1).getAttribute("phrase").asInstanceOf[String] must be equalTo "2world"
+      // handle more derived fields than input fields
+      res(0).getAttribute("oneup").asInstanceOf[String] must be equalTo "1"
+      // correctly identify feature IDs based on lines
+      val hashing = Hashing.md5()
+      res(0).getID mustEqual hashing.hashBytes("1,hello,45.0,45.0".getBytes(StandardCharsets.UTF_8)).toString
+      res(1).getID mustEqual hashing.hashBytes("2,world,90.0,90.0".getBytes(StandardCharsets.UTF_8)).toString
     }
 
     "handle tab delimited files" >> {
@@ -757,34 +754,6 @@ class DelimitedTextConverterTest extends Specification {
         res must haveSize(1)
         res(0).getAttribute("phrase") mustEqual "hello"
         res(0).getAttribute("geom").toString mustEqual "POINT (45 45)"
-      }
-    }
-
-    "not skip lines for v1 processSingleInput" >> {
-      val conf = ConfigFactory.parseString(
-        """
-          | {
-          |   type         = "delimited-text",
-          |   format       = "DEFAULT",
-          |   id-field     = "md5(string2bytes($0))",
-          |   fields = [
-          |     { name = "phrase", transform = "$2" },
-          |     { name = "geom",   transform = "point($3::double, $4::double)" }
-          |   ]
-          |   options = {
-          |     skip-lines = 1
-          |   }
-          | }
-        """.stripMargin)
-
-      val sft = SimpleFeatureTypes.createType("test", "phrase:String,*geom:Point:srid=4326")
-      WithClose(SimpleFeatureConverters.build[String](sft, conf)) { converter =>
-        converter must not(beNull)
-
-        val res = converter.processSingleInput("""1,hello,45.0,45.0""").toList
-        res must haveSize(1)
-        res.head.getAttribute("phrase") mustEqual "hello"
-        res.head.getAttribute("geom").toString mustEqual "POINT (45 45)"
       }
     }
 

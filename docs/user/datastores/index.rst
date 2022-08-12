@@ -1,3 +1,5 @@
+.. _geomesa_data_stores:
+
 GeoMesa Data Stores
 ===================
 
@@ -17,10 +19,11 @@ Not sure where to begin? Take a look at :doc:`/user/getting_started`.
     index_config
     runtime_config
     query_planning
+    query_interceptor
     query_config
     filter_functions
     analytic_queries
-    authorizations
+    security
     auditing
     data
     reserved_words
@@ -39,6 +42,7 @@ Specific back-end implementations are described in the following chapters:
  * :doc:`/user/redis/index`
  * :doc:`/user/filesystem/index`
  * :doc:`/user/kudu/index`
+ * :doc:`/user/postgis/index`
  * :doc:`/user/lambda/index`
 
 Additional information on using GeoTools can be found in the

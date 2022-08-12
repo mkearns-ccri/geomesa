@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -15,6 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
 import com.typesafe.scalalogging.LazyLogging
 import org.geotools.data.DataStore
 import org.geotools.filter.text.ecql.ECQL
+import org.geotools.util.factory.Hints
 import org.locationtech.geomesa.curve.BinnedTime
 import org.locationtech.geomesa.curve.TimePeriod.TimePeriod
 import org.locationtech.geomesa.filter.visitor.QueryPlanFilterVisitor
@@ -41,9 +42,9 @@ abstract class MetadataBackedStats(ds: DataStore, metadata: GeoMesaMetadata[Stat
 
   override val writer: GeoMesaStatWriter = new MetadataStatWriter()
 
-  override def getCount(sft: SimpleFeatureType, filter: Filter, exact: Boolean): Option[Long] = {
+  override def getCount(sft: SimpleFeatureType, filter: Filter, exact: Boolean, queryHints: Hints): Option[Long] = {
     if (exact) {
-      query[CountStat](sft, filter, Stat.Count()).map(_.count)
+      query[CountStat](sft, filter, Stat.Count(), queryHints).map(_.count)
     } else if (filter == Filter.INCLUDE) {
       // note: compared to the 'read' method, we want to return empty counts (indicating no features)
       try { metadata.read(sft.getTypeName, countKey()).collect { case s: CountStat => s.count } } catch {
@@ -257,24 +258,24 @@ abstract class MetadataBackedStats(ds: DataStore, metadata: GeoMesaMetadata[Stat
 
     // calculate histograms for all indexed attributes and geom/date
     val histograms = (stAttributes ++ indexedAttributes).distinct.map { attribute =>
-        val binding = sft.getDescriptor(attribute).getType.getBinding
-      // calculate the endpoints for the histogram
-      // the histogram will expand as needed, but this is a starting point
-      val (lower, upper, cardinality) = {
-        val mm = bounds(attribute)
-        val (min, max) = mm match {
-          case None => defaultBounds(binding)
-          // max has to be greater than min for the histogram bounds
-          case Some(b) if b.min == b.max => Histogram.buffer(b.min)
-          case Some(b) => b.bounds
-        }
-        (min, max, mm.map(_.cardinality).getOrElse(0L))
-      }
+      val minMax = bounds(attribute)
+      val cardinality = minMax.map(_.cardinality).getOrElse(0L)
       // estimate 10k entries per bin, but cap at 10k bins (~29k on disk)
       val size = if (attribute == sft.getGeomField) { MaxHistogramSize } else {
         math.min(MaxHistogramSize, math.max(DefaultHistogramSize, cardinality / 10000).toInt)
       }
-      Stat.Histogram[Any](attribute, size, lower, upper)(ClassTag[Any](binding))
+      val binding = sft.getDescriptor(attribute).getType.getBinding
+      implicit val ct = ClassTag[Any](binding)
+      // calculate the endpoints for the histogram
+      // the histogram will expand as needed, but this is a starting point
+      val (lower, upper) = minMax match {
+        case None => defaultBounds(binding)
+        // max has to be greater than min for the histogram bounds
+        case Some(b) if Histogram.equivalent(b.min, b.max, size) => Histogram.buffer(b.min)
+        case Some(b) => b.bounds
+      }
+
+      Stat.Histogram[Any](attribute, size, lower, upper)
     }
 
     val z3Histogram = for {
@@ -403,7 +404,7 @@ abstract class MetadataBackedStats(ds: DataStore, metadata: GeoMesaMetadata[Stat
         }
       }
 
-      def rename(stat: Stat): Stat = {
+      def rename(stat: Stat): Option[Stat] = {
         val copy: Option[Stat] = stat match {
           case _: CountStat =>
             None
@@ -432,13 +433,16 @@ abstract class MetadataBackedStats(ds: DataStore, metadata: GeoMesaMetadata[Stat
             }
 
           case s: SeqStat =>
-            Some(new SeqStat(sft, s.stats.map(rename)))
+            val children = s.stats.map(rename)
+            if (children.forall(_.isEmpty)) { None } else {
+              Some(new SeqStat(sft, children.zip(s.stats).map { case (opt, default) => opt.getOrElse(default) }))
+            }
 
           case s =>
             throw new NotImplementedError(s"Unexpected stat: $s")
         }
         copy.foreach(_ += stat)
-        copy.getOrElse(stat)
+        copy
       }
 
       if (names.nonEmpty || sft.getTypeName != previous.getTypeName) {
@@ -452,11 +456,19 @@ abstract class MetadataBackedStats(ds: DataStore, metadata: GeoMesaMetadata[Stat
         val old = try { metadata.scan(previous.getTypeName, "", cache = false).toList } finally {
           serializer.foreach(s => s.cache.remove(previous.getTypeName)) // will re-load latest from data store
         }
-        old.foreach { case (key, stat) =>
-          val renamed = getStatsForWrite(rename(stat), sft, merge = false)
-          write(sft.getTypeName, renamed)
-          if (sft.getTypeName != previous.getTypeName || !renamed.exists(_.key == key)) {
+        // note: we can avoid a compaction by setting merge = true, since there won't be any previous values
+        if (sft.getTypeName != previous.getTypeName) {
+          old.foreach { case (key, stat) =>
+            val renamed = getStatsForWrite(rename(stat).getOrElse(stat), sft, merge = true)
+            write(sft.getTypeName, renamed)
             metadata.remove(previous.getTypeName, key)
+          }
+        } else {
+          old.foreach { case (key, stat) =>
+            rename(stat).foreach { r =>
+              write(sft.getTypeName, getStatsForWrite(r, sft, merge = true))
+              metadata.remove(previous.getTypeName, key)
+            }
           }
         }
       }
@@ -566,11 +578,4 @@ object MetadataBackedStats {
     override def deserialize(typeName: String, value: Array[Byte]): Stat =
       serializer(typeName).deserialize(value, immutable = true)
   }
-
-  @deprecated("org.locationtech.geomesa.index.stats.RunnableStats")
-  class RunnableStats(ds: DataStore) extends org.locationtech.geomesa.index.stats.RunnableStats(ds)
-
-  @deprecated("org.locationtech.geomesa.index.stats.RunnableStats.UnoptimizedRunnableStats")
-  class UnoptimizedRunnableStats(ds: DataStore)
-      extends org.locationtech.geomesa.index.stats.RunnableStats.UnoptimizedRunnableStats(ds)
 }

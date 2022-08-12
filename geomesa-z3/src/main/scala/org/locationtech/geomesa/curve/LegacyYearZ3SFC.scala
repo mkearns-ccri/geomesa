@@ -1,5 +1,9 @@
 /***********************************************************************
+<<<<<<< HEAD
  * Copyright (c) 2013-2020 Commonwealth Computer Research, Inc.
+=======
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
+>>>>>>> main
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -11,7 +15,10 @@ package org.locationtech.geomesa.curve
 import java.time.temporal.ChronoUnit
 
 import org.locationtech.geomesa.curve.NormalizedDimension.NormalizedTime
+<<<<<<< HEAD
 import org.locationtech.sfcurve.zorder.Z3
+=======
+>>>>>>> main
 
 /**
  * Z3SFC with a legacy, incorrect max time value of 52 weeks. The max value is kept the same to ensure that
@@ -31,7 +38,11 @@ class LegacyYearZ3SFC(precision: Int = 21) extends {
   // the correct max time duration
   private val maxTime = BinnedTime.maxOffset(TimePeriod.Year)
 
+<<<<<<< HEAD
   override def index(x: Double, y: Double, t: Long, lenient: Boolean = false): Z3 = {
+=======
+  override def index(x: Double, y: Double, t: Long, lenient: Boolean = false): Long = {
+>>>>>>> main
     if (t > time.max && t <= maxTime) {
       super.index(x, y, time.max.toLong, lenient)
     } else {

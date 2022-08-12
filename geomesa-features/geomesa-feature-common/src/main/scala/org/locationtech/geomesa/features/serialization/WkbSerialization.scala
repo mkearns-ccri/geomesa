@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -9,6 +9,7 @@
 package org.locationtech.geomesa.features.serialization
 
 import org.locationtech.jts.geom._
+import org.locationtech.jts.geom.impl.CoordinateArraySequenceFactory
 
 import scala.reflect.ClassTag
 
@@ -27,8 +28,16 @@ trait WkbSerialization[T <: NumericWriter, V <: NumericReader] {
 
   import WkbSerialization._
 
-  private lazy val factory = new GeometryFactory()
-  private lazy val csFactory = factory.getCoordinateSequenceFactory
+  private val factory = new GeometryFactory()
+  private val csFactory = CoordinateArraySequenceFactory.instance()
+
+  private val xySerializer   = new XYSerializer()
+  private val xyzSerializer  = new XYZSerializer()
+  private val xymSerializer  = new XYMSerializer()
+  private val xyzmSerializer = new XYZMSerializer()
+
+  protected val maxNesting: Int = GeometryNestingThreshold.toInt.get
+  protected val maxLength : Int = GeometryLengthThreshold.toInt.getOrElse(Int.MaxValue)
 
   def serializeWkb(out: T, geometry: Geometry): Unit = {
     if (geometry == null) { out.writeByte(NULL_BYTE) } else {
@@ -45,47 +54,90 @@ trait WkbSerialization[T <: NumericWriter, V <: NumericReader] {
     }
   }
 
-  def deserializeWkb(in: V, checkNull: Boolean = false): Geometry = {
+  def deserializeWkb(in: V, checkNull: Boolean = false): Geometry = deserializeWkb(in, checkNull, 0)
+
+  private def deserializeWkb(in: V, checkNull: Boolean, nesting: Int): Geometry = {
     if (checkNull && in.readByte() == NULL_BYTE) { null } else {
       in.readInt(true) match {
-        case Point2d            => readPoint(in, Some(2))
-        case LineString2d       => readLineString(in, Some(2))
-        case Polygon2d          => readPolygon(in, Some(2))
-        case Point              => readPoint(in, None)
-        case LineString         => readLineString(in, None)
-        case Polygon            => readPolygon(in, None)
-        case MultiPoint         => factory.createMultiPoint(readGeometryCollection[Point](in))
-        case MultiLineString    => factory.createMultiLineString(readGeometryCollection[LineString](in))
-        case MultiPolygon       => factory.createMultiPolygon(readGeometryCollection[Polygon](in))
-        case GeometryCollection => factory.createGeometryCollection(readGeometryCollection[Geometry](in))
-        case i => throw new IllegalArgumentException(s"Expected geometry type byte, got $i")
+        case Point              => readPoint(in, xySerializer)
+        case LineString         => readLineString(in, xySerializer)
+        case Polygon            => readPolygon(in, xySerializer)
+        case PointXYZ           => readPoint(in, xyzSerializer)
+        case LineStringXYZ      => readLineString(in, xyzSerializer)
+        case PolygonXYZ         => readPolygon(in, xyzSerializer)
+        case PointXYM           => readPoint(in, xymSerializer)
+        case LineStringXYM      => readLineString(in, xymSerializer)
+        case PolygonXYM         => readPolygon(in, xymSerializer)
+        case PointXYZM          => readPoint(in, xyzmSerializer)
+        case LineStringXYZM     => readLineString(in, xyzmSerializer)
+        case PolygonXYZM        => readPolygon(in, xyzmSerializer)
+        case MultiPoint         => factory.createMultiPoint(readGeometryCollection[Point](in, nesting))
+        case MultiLineString    => factory.createMultiLineString(readGeometryCollection[LineString](in, nesting))
+        case MultiPolygon       => factory.createMultiPolygon(readGeometryCollection[Polygon](in, nesting))
+        case GeometryCollection => factory.createGeometryCollection(readGeometryCollection[Geometry](in, nesting))
+        // legacy encodings - dimension serialized as a separate int
+        case 8                  => readLegacyPoint(in)
+        case 9                  => readLegacyLineString(in)
+        case 10                 => readLegacyPolygon(in)
+        case f => throw new IllegalArgumentException(s"Expected geometry type byte, but got $f")
       }
     }
   }
 
   private def writePoint(out: T, g: Point): Unit = {
+<<<<<<< HEAD
     val twoD = WkbSerialization.is2d(g)
     val coords = g.getCoordinateSequence
     val (flag, writeDims) = if (twoD) { (Point2d, false) } else { (Point, true) }
     out.writeInt(flag, optimizePositive = true)
     writeCoordinateSequence(out, coords, twoD, writeLength = false, writeDims)
+=======
+    val writer = getWriter(g)
+    out.writeInt(writer.flag + Point, optimizePositive = true)
+    writeCoordinateSequence(out, writer, g.getCoordinateSequence, writeLength = false)
+>>>>>>> main
   }
 
-  private def readPoint(in: V, dims: Option[Int]): Point =
-    factory.createPoint(readCoordinateSequence(in, Some(1), dims))
+  private def readPoint(in: V, reader: CoordinateSerializer): Point =
+    factory.createPoint(readCoordinateSequence(in, reader, Some(1)))
+
+  private def readLegacyPoint(in: V): Point = {
+    in.readInt(optimizePositive = true) match {
+      case 2 => readPoint(in, xySerializer)
+      case 3 => readPoint(in, xyzSerializer)
+      case i => throw new IllegalArgumentException(s"Expected 2 or 3 dimensions, but got $i")
+    }
+  }
 
   private def writeLineString(out: T, g: LineString): Unit = {
+<<<<<<< HEAD
     val twoD = WkbSerialization.is2d(g)
     val coords = g.getCoordinateSequence
     val (flag, writeDims) = if (twoD) { (LineString2d, false) } else { (LineString, true) }
     out.writeInt(flag, optimizePositive = true)
     writeCoordinateSequence(out, coords, twoD, writeLength = true, writeDims)
+=======
+    val writer = getWriter(g)
+    out.writeInt(writer.flag + LineString, optimizePositive = true)
+    val coords = g.getCoordinateSequence
+    writeCoordinateSequence(out, writer, coords, writeLength = true)
+>>>>>>> main
   }
 
-  private def readLineString(in: V, dims: Option[Int]): LineString =
-    factory.createLineString(readCoordinateSequence(in, None, dims))
+  private def readLineString(in: V, reader: CoordinateSerializer): LineString =
+    factory.createLineString(readCoordinateSequence(in, reader, None))
+
+  private def readLegacyLineString(in: V): LineString = {
+    val length = in.readInt(optimizePositive = true)
+    in.readInt(optimizePositive = true) match {
+      case 2 => factory.createLineString(readCoordinateSequence(in, xySerializer, Some(length)))
+      case 3 => factory.createLineString(readCoordinateSequence(in, xyzSerializer, Some(length)))
+      case i => throw new IllegalArgumentException(s"Expected 2 or 3 dimensions, but got $i")
+    }
+  }
 
   private def writePolygon(out: T, g: Polygon): Unit = {
+<<<<<<< HEAD
     val twoD = WkbSerialization.is2d(g)
     val exterior = g.getExteriorRing.getCoordinateSequence
     val (flag, writeDims) = if (twoD) { (Polygon2d, false) } else { (Polygon, true) }
@@ -95,20 +147,62 @@ trait WkbSerialization[T <: NumericWriter, V <: NumericReader] {
     var i = 0
     while (i < g.getNumInteriorRing) {
       writeCoordinateSequence(out, g.getInteriorRingN(i).getCoordinateSequence, twoD, writeLength = true, writeDims)
+=======
+    val writer = getWriter(g)
+    out.writeInt(writer.flag + Polygon, optimizePositive = true)
+    val exterior = g.getExteriorRing.getCoordinateSequence
+    writeCoordinateSequence(out, writer, exterior, writeLength = true)
+    out.writeInt(g.getNumInteriorRing, optimizePositive = true)
+    var i = 0
+    while (i < g.getNumInteriorRing) {
+      writeCoordinateSequence(out, writer, g.getInteriorRingN(i).getCoordinateSequence, writeLength = true)
+>>>>>>> main
       i += 1
     }
   }
 
-  private def readPolygon(in: V, dims: Option[Int]): Polygon = {
-    val exteriorRing = factory.createLinearRing(readCoordinateSequence(in, None, dims))
+  private def readPolygon(in: V, reader: CoordinateSerializer): Polygon = {
+    val exteriorRing = factory.createLinearRing(readCoordinateSequence(in, reader, None))
     val numInteriorRings = in.readInt(true)
     if (numInteriorRings == 0) {
       factory.createPolygon(exteriorRing)
+    } else if (numInteriorRings > maxLength) {
+      throw new IllegalArgumentException(
+        s"Attempting to deserialize a polygon of size $numInteriorRings " +
+            s"with '${GeometryLengthThreshold.property}' = $maxLength'")
     } else {
       val interiorRings = Array.ofDim[LinearRing](numInteriorRings)
       var i = 0
       while (i < numInteriorRings) {
-        interiorRings.update(i, factory.createLinearRing(readCoordinateSequence(in, None, dims)))
+        interiorRings(i) = factory.createLinearRing(readCoordinateSequence(in, reader, None))
+        i += 1
+      }
+      factory.createPolygon(exteriorRing, interiorRings)
+    }
+  }
+
+  private def readLegacyPolygon(in: V): Polygon = {
+    def readLinearRing(): LinearRing = {
+      val length = in.readInt(optimizePositive = true)
+      in.readInt(optimizePositive = true) match {
+        case 2 => factory.createLinearRing(readCoordinateSequence(in, xySerializer, Some(length)))
+        case 3 => factory.createLinearRing(readCoordinateSequence(in, xyzSerializer, Some(length)))
+        case i => throw new IllegalArgumentException(s"Expected 2 or 3 dimensions, but got $i")
+      }
+    }
+    val exteriorRing = readLinearRing()
+    val numInteriorRings = in.readInt(true)
+    if (numInteriorRings == 0) {
+      factory.createPolygon(exteriorRing)
+    } else if (numInteriorRings > maxLength) {
+      throw new IllegalArgumentException(
+        s"Attempting to deserialize a polygon of size $numInteriorRings " +
+            s"with '${GeometryLengthThreshold.property}' = $maxLength'")
+    } else {
+      val interiorRings = Array.ofDim[LinearRing](numInteriorRings)
+      var i = 0
+      while (i < numInteriorRings) {
+        interiorRings(i) = readLinearRing()
         i += 1
       }
       factory.createPolygon(exteriorRing, interiorRings)
@@ -125,12 +219,20 @@ trait WkbSerialization[T <: NumericWriter, V <: NumericReader] {
     }
   }
 
-  private def readGeometryCollection[U <: Geometry: ClassTag](in: V): Array[U] = {
+  private def readGeometryCollection[U <: Geometry: ClassTag](in: V, nesting: Int): Array[U] = {
+    if (nesting > maxNesting) {
+      throw new IllegalArgumentException(s"Detected recursive deserialization loop of $maxNesting")
+    }
     val numGeoms = in.readInt(true)
+    if (numGeoms > maxLength) {
+      throw new IllegalArgumentException(
+        s"Attempting to deserialize a geometry of size $numGeoms " +
+            s"with '${GeometryLengthThreshold.property}' = $maxLength'")
+    }
     val geoms = Array.ofDim[U](numGeoms)
     var i = 0
     while (i < numGeoms) {
-      geoms.update(i, deserializeWkb(in, checkNull = true).asInstanceOf[U])
+      geoms.update(i, deserializeWkb(in, checkNull = true, nesting + 1).asInstanceOf[U])
       i += 1
     }
     geoms
@@ -138,58 +240,161 @@ trait WkbSerialization[T <: NumericWriter, V <: NumericReader] {
 
   private def writeCoordinateSequence(
       out: T,
+<<<<<<< HEAD
       coords: CoordinateSequence,
       twoD: Boolean,
       writeLength: Boolean,
       writeDimensions: Boolean): Unit = {
     val dims = coords.getDimension
+=======
+      writer: CoordinateSerializer,
+      coords: CoordinateSequence,
+      writeLength: Boolean): Unit = {
+>>>>>>> main
     if (writeLength) {
       out.writeInt(coords.size(), optimizePositive = true)
     }
-    if (writeDimensions) {
-      out.writeInt(dims, optimizePositive = true)
-    }
     var i = 0
     while (i < coords.size()) {
+<<<<<<< HEAD
       val coord = coords.getCoordinate(i)
       out.writeDouble(coord.getOrdinate(0))
       out.writeDouble(coord.getOrdinate(1))
       if (!twoD) {
         out.writeDouble(coord.getOrdinate(2))
       }
+=======
+      writer.write(out, coords.getCoordinate(i))
+>>>>>>> main
       i += 1
     }
   }
 
-  private def readCoordinateSequence(in: V, length: Option[Int], dimensions: Option[Int]): CoordinateSequence = {
+  private def readCoordinateSequence(in: V, reader: CoordinateSerializer, length: Option[Int]): CoordinateSequence = {
     val numCoords = length.getOrElse(in.readInt(true))
-    val numDims = dimensions.getOrElse(in.readInt(true))
-    val coords = csFactory.create(numCoords, numDims)
+    if (numCoords > maxLength) {
+      throw new IllegalArgumentException(
+        s"Attempting to deserialize a geometry of size $numCoords " +
+            s"with '${GeometryLengthThreshold.property}' = $maxLength'")
+    }
+    val coords = Array.ofDim[Coordinate](numCoords)
     var i = 0
     while (i < numCoords) {
-      var j = 0
-      while (j < numDims) {
-        coords.setOrdinate(i, j, in.readDouble())
-        j += 1
-      }
+      coords(i) = reader.read(in)
       i += 1
     }
-    coords
+    csFactory.create(coords)
+  }
+
+  private def getWriter(geometry: Geometry): CoordinateSerializer = {
+    // don't trust coord.getDimensions - it always returns 3 in jts
+    // instead, check for NaN for the z dimension
+    // note that we only check the first coordinate - if a geometry is written with different
+    // dimensions in each coordinate, some information may be lost
+    val coord = geometry.getCoordinate
+    if (coord == null) { xySerializer } else {
+      // check for dimensions - use NaN != NaN to verify coordinate dimensions
+      val hasZ = !java.lang.Double.isNaN(coord.getZ)
+      val hasM = !java.lang.Double.isNaN(coord.getM)
+      if (hasZ) {
+        if (hasM) {
+          xyzmSerializer
+        } else {
+          xyzSerializer
+        }
+      } else if (hasM) {
+        xymSerializer
+      } else {
+        xySerializer
+      }
+    }
+  }
+
+  private sealed trait CoordinateSerializer {
+    def flag: Int
+    def write(out: T, coord: Coordinate): Unit
+    def read(in: V): Coordinate
+  }
+
+  private class XYSerializer extends CoordinateSerializer {
+    override val flag: Int = XYFlag
+    override def write(out: T, coord: Coordinate): Unit = {
+      out.writeDouble(coord.getX)
+      out.writeDouble(coord.getY)
+    }
+    override def read(in: V): Coordinate = {
+      val x = in.readDouble()
+      val y = in.readDouble()
+      new CoordinateXY(x, y)
+    }
+  }
+
+  private class XYZSerializer extends CoordinateSerializer {
+    override val flag: Int = XYZFlag
+    override def write(out: T, coord: Coordinate): Unit = {
+      out.writeDouble(coord.getX)
+      out.writeDouble(coord.getY)
+      out.writeDouble(coord.getZ)
+    }
+    override def read(in: V): Coordinate = {
+      val x = in.readDouble()
+      val y = in.readDouble()
+      val z = in.readDouble()
+      new Coordinate(x, y, z)
+    }
+  }
+
+  private class XYMSerializer extends CoordinateSerializer {
+    override val flag: Int = XYMFlag
+    override def write(out: T, coord: Coordinate): Unit = {
+      out.writeDouble(coord.getX)
+      out.writeDouble(coord.getY)
+      out.writeDouble(coord.getM)
+    }
+    override def read(in: V): Coordinate = {
+      val x = in.readDouble()
+      val y = in.readDouble()
+      val m = in.readDouble()
+      new CoordinateXYM(x, y, m)
+    }
+  }
+
+  private class XYZMSerializer extends CoordinateSerializer {
+    override val flag: Int = XYZMFlag
+    override def write(out: T, coord: Coordinate): Unit = {
+      out.writeDouble(coord.getX)
+      out.writeDouble(coord.getY)
+      out.writeDouble(coord.getZ)
+      out.writeDouble(coord.getM)
+    }
+    override def read(in: V): Coordinate = {
+      val x = in.readDouble()
+      val y = in.readDouble()
+      val z = in.readDouble()
+      val m = in.readDouble()
+      new CoordinateXYZM(x, y, z, m)
+    }
   }
 }
 
 object WkbSerialization {
 
-  // 2-d values - corresponds to org.locationtech.jts.io.WKBConstants
-  val Point2d: Int            = 1
-  val LineString2d: Int       = 2
-  val Polygon2d: Int          = 3
+  // geometry type constants
+  val Point              : Int = 1
+  val LineString         : Int = 2
+  val Polygon            : Int = 3
+  val MultiPoint         : Int = 4
+  val MultiLineString    : Int = 5
+  val MultiPolygon       : Int = 6
+  val GeometryCollection : Int = 7
 
-  val MultiPoint: Int         = 4
-  val MultiLineString: Int    = 5
-  val MultiPolygon: Int       = 6
-  val GeometryCollection: Int = 7
+  // dimension constants
+  val XYFlag   : Int = 0
+  val XYZFlag  : Int = 1000
+  val XYMFlag  : Int = 2000
+  val XYZMFlag : Int = 3000
 
+<<<<<<< HEAD
   // n-dimensional values
   val Point: Int              = 8
   val LineString: Int         = 9
@@ -205,4 +410,16 @@ object WkbSerialization {
     // TODO check for M coordinate when added to JTS
     coord == null || java.lang.Double.isNaN(coord.getZ)
   }
+=======
+  // used in our match statement
+  val PointXYZ       : Int = Point      + XYZFlag
+  val LineStringXYZ  : Int = LineString + XYZFlag
+  val PolygonXYZ     : Int = Polygon    + XYZFlag
+  val PointXYM       : Int = Point      + XYMFlag
+  val LineStringXYM  : Int = LineString + XYMFlag
+  val PolygonXYM     : Int = Polygon    + XYMFlag
+  val PointXYZM      : Int = Point      + XYZMFlag
+  val LineStringXYZM : Int = LineString + XYZMFlag
+  val PolygonXYZM    : Int = Polygon    + XYZMFlag
+>>>>>>> main
 }

@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -10,10 +10,14 @@ package org.locationtech.geomesa.convert.shp
 
 import java.io.InputStream
 import java.util.Collections
+import java.nio.charset.Charset
+import java.nio.file.{Files, Paths}
 
+import com.codahale.metrics.Counter
+import com.typesafe.scalalogging.LazyLogging
 import org.geotools.data.shapefile.{ShapefileDataStore, ShapefileDataStoreFactory}
 import org.geotools.data.{DataStoreFinder, Query}
-import org.locationtech.geomesa.convert.{EnrichmentCache, EvaluationContext}
+import org.locationtech.geomesa.convert.EvaluationContext
 import org.locationtech.geomesa.convert2.AbstractConverter
 import org.locationtech.geomesa.convert2.AbstractConverter.{BasicConfig, BasicField, BasicOptions}
 import org.locationtech.geomesa.utils.collection.CloseableIterator
@@ -34,15 +38,14 @@ class ShapefileConverter(sft: SimpleFeatureType, config: BasicConfig, fields: Se
     super.createEvaluationContext(globalParams ++ shpParams)
   }
 
-  // noinspection ScalaDeprecation
   override def createEvaluationContext(
       globalParams: Map[String, Any],
-      caches: Map[String, EnrichmentCache],
-      counter: org.locationtech.geomesa.convert.Counter): EvaluationContext = {
+      success: Counter,
+      failure: Counter): EvaluationContext = {
     // inject placeholders for shapefile attributes into the evaluation context
     // used for accessing shapefile properties by name in ShapefileFunctionFactory
     val shpParams = Map(InputSchemaKey -> Array.empty[String], InputValuesKey -> Array.empty[Any])
-    super.createEvaluationContext(globalParams ++ shpParams, caches, counter)
+    super.createEvaluationContext(globalParams ++ shpParams, success, failure)
   }
 
   override protected def parse(is: InputStream, ec: EvaluationContext): CloseableIterator[SimpleFeature] = {
@@ -120,7 +123,7 @@ class ShapefileConverter(sft: SimpleFeatureType, config: BasicConfig, fields: Se
   }
 }
 
-object ShapefileConverter {
+object ShapefileConverter extends LazyLogging {
 
   /**
     * Creates a URL, needed for the shapefile data store
@@ -131,9 +134,33 @@ object ShapefileConverter {
   def getDataStore(path: String): ShapefileDataStore = {
     val params = Collections.singletonMap(ShapefileDataStoreFactory.URLP.key, PathUtils.getUrl(path))
     val ds = DataStoreFinder.getDataStore(params).asInstanceOf[ShapefileDataStore]
+    tryInferCharsetFromCPG(path) match {
+      case Some(charset) => ds.setCharset(charset)
+      case None =>
+    }
     if (ds == null) {
       throw new IllegalArgumentException(s"Could not read shapefile using path '$path'")
     }
     ds
+  }
+
+  // Infer charset to decode strings in DBF file by inspecting the content of the CPG file. 
+  private def tryInferCharsetFromCPG(path: String): Option[Charset] = {
+    val shpDirPath = Paths.get(path).getParent
+    val (baseName, _) = PathUtils.getBaseNameAndExtension(path)
+    val cpgPath = shpDirPath.resolve(baseName + ".cpg")
+    if (!Files.isRegularFile(cpgPath)) None else {
+      val source = io.Source.fromFile(cpgPath.toFile)
+      try {
+        source.getLines.take(1).toList match {
+          case Nil => None
+          case charsetName :: _ => Some(Charset.forName(charsetName.trim))
+        }
+      } catch {
+        case e: Exception =>
+          logger.warn("Can't figure out charset from cpg file, will use default charset")
+          None
+      } finally source.close()
+    }
   }
 }

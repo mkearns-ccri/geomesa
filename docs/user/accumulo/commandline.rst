@@ -21,25 +21,22 @@ here are Accumulo-specific.
 General Arguments
 -----------------
 
-Most commands require you to specify the connection to Accumulo. This generally includes a username and
-password (or Kerberos keytab file). Specify the username and password with ``--user`` and ``--password``
-(or ``-u`` and ``-p``). In order to avoid plaintext passwords in the bash history and process list,
-the password argument may be omitted, in which case it will be prompted for instead.
+Most commands require you to specify the connection to Accumulo. This generally includes the instance name,
+zookeeper hosts, username, and password (or Kerberos keytab file). Specify the instance with ``--instance-name``
+and ``--zookeepers``, and the username and password with ``--user`` and ``--password``. The password argument may be
+omitted in order to avoid plaintext credentials in the bash history and process list - in this case it will be
+prompted case for later. To use Kerberos authentication instead of a password, use ``--keytab`` with a path to a
+Kerberos keytab file containing an entry for the specified user. Since a keytab file allows authentication
+without any further constraints, it should be protected appropriately.
 
-To use Kerberos authentication instead of a password, use ``--keytab`` with a path to a Kerberos keytab
-file containing an entry for the specified user. Since a keytab file allows authentication without any
-further constraints, it should be protected appropriately.
+Instead of specifying the cluster connection explicitly, an appropriate ``accumulo-client.properties`` (for Accumulo
+2) or ``client.conf`` (for Accumulo 1) may be added to the classpath. See the
+`Accumulo documentation <https://accumulo.apache.org/docs/2.x/getting-started/clients#creating-an-accumulo-client>`_
+for information on the necessary configuration keys. Any explicit command-line arguments will take precedence over
+the configuration file.
 
-If the necessary environment variables are set (generally as part of the install process), the tools should
-connect automatically to the Accumulo instance. To specify the connection instead, use ``--instance-name``
-and ``--zookeepers`` (or ``-i`` and ``-z``).
-
-The ``--auths`` and ``--visibilities`` arguments correspond to the ``AccumuloDataStore`` parameters
-``geomesa.security.auths`` and ``geomesa.security.visibilities``, respectively. See :ref:`authorizations`
-and :ref:`accumulo_visibilities` for more information.
-
-The ``--mock`` argument can be used to run against a mock Accumulo instance, for testing. In particular,
-this can be useful for verifying ingest converters.
+The ``--auths`` argument corresponds to the ``AccumuloDataStore`` parameter ``geomesa.security.auths``. See
+:ref:`data_security` for more information.
 
 Commands
 --------
@@ -90,6 +87,64 @@ Argument                 Description
 ======================== =========================================================
 
 For a description of index coverage, see :ref:`accumulo_attribute_indices`.
+
+``bulk-ingest``
+^^^^^^^^^^^^^^^
+
+The bulk ingest command will ingest directly to Accumulo RFiles and then import the RFiles into Accumulo, bypassing
+the normal write path. See `Bulk Ingest <https://accumulo.apache.org/docs/2.x/development/high_speed_ingest#bulk-ingest>`__
+in the Accumulo documentation for additional details.
+
+.. note::
+
+  Bulk ingest is currently only implemented for Accumulo 2.0.
+
+The data to be ingested must be in the same distributed file system that Accumulo is using, and the ingest
+must run in ``distributed`` mode as a map/reduce job.
+
+In order to run efficiently, you should ensure that the data tables have appropriate splits, based on
+your input. This will avoid creating extremely large files during the ingest, and will also prevent the cluster
+from having to subsequently split the RFiles. See :ref:`table_split_config` for more information.
+
+Note that some of the below options are inherited from the regular ``ingest`` command, but are not relevant
+to bulk ingest. See :ref:`cli_ingest` for additional details on the available options.
+
+========================== ==================================================================================================
+Argument                   Description
+========================== ==================================================================================================
+``-c, --catalog *``        The catalog table containing schema metadata
+``--output *``             The output directory used to write out RFiles
+``-f, --feature-name``     The name of the schema
+``-s, --spec``             The ``SimpleFeatureType`` specification to create
+``-C, --converter``        The GeoMesa converter used to create ``SimpleFeature``\ s
+``--converter-error-mode`` Override the error mode defined by the converter
+``-q, --cql``              If using a partitioned store, a filter that covers the ingest data
+``-t, --threads``          Number of parallel threads used
+``--input-format``         Format of input files (csv, tsv, avro, shp, json, etc)
+```--index``               Specify a particular GeoMesa index to write to, instead of all indices
+``--temp-path``            A temporary path to write the output. When using Accumulo on S3, it may be faster to write the
+                           output to HDFS first using this parameter
+``--no-tracking``          This application closes when ingest job is submitted. Note that this will require manual import
+                           of the resulting RFiles.
+``--run-mode``             Must be ``distributed`` for bulk ingest
+``--split-max-size``       Maximum size of a split in bytes (distributed jobs)
+``--src-list``             Input files are text files with lists of files, one per line, to ingest
+``--skip-import``          Generate the RFiles but skip the bulk import into Accumulo
+``--force``                Suppress any confirmation prompts
+``<files>...``             Input files to ingest
+========================== ==================================================================================================
+
+The ``--output`` directory will be interpreted as a distributed file system path. If it already exists, the user will
+be prompted to delete it before running the ingest.
+
+The ``--cql`` parameter is required if using a partitioned schema (see :ref:`partitioned_indices` for details).
+The filter must cover the partitions for all the input data, so that the partition tables can be
+created appropriately. Any feature which doesn't match the filter or correspond to a an existing
+table will fail to be ingested.
+
+``--skip-import`` can be used to skip the import of the RFiles into Accumulo. The files can be imported later
+through the ``importdirectory`` command in the Accumulo shell. Note that if ``--no-tracking`` is specified,
+the import will be skipped regardless.
 
 .. _compact_command:
 
@@ -258,56 +313,4 @@ Argument                 Description
 ======================== =========================================================
 ``-c, --catalog *``      The catalog table containing schema metadata
 ``-f, --feature-name *`` The name of the schema
-======================== =========================================================
-
-.. _accumulo_tools_raster:
-
-``ingest-raster``
-^^^^^^^^^^^^^^^^^
-
-.. warning::
-
-  GeoMesa raster support is deprecated and will be removed in a future version.
-
-Ingest one or more raster image files into Geomesa. Input files, GeoTIFF or DTED, should be located
-on the local file system.
-
-.. warning::
-
-    In order to ingest rasters, ensure that you install JAI and JLine as described under
-    :ref:`setting_up_accumulo_commandline`.
-
-Input raster files are assumed to have CRS of ``EPSG:4326``. Non-``EPSG:4326`` files will need to be
-converted into ``EPSG:4326`` raster files before ingestion. An example of doing conversion with GDAL is::
-
-    gdalwarp -t_srs EPSG:4326 input_file out_file
-
-======================== =========================================================
-Argument                 Description
-======================== =========================================================
-``-t, --raster-table *`` Accumulo table for storing raster data
-``-f, --file *``         A single raster file or a directly containing raster files to ingest
-``-F, --format``         The format of raster files, which must match the file extension
-``-P, --parallel-level`` Maximum number of local threads for ingesting multiple raster files
-``-T, --timestamp``      Ingestion time (defaults to current time)
-``--write-memory``       Memory allocation for ingestion operation
-``--write-threads``      Numer of threads used for writing raster data
-``--query-threads``      Number of threads used for querying raster data
-======================== =========================================================
-
-.. warning::
-
-    When ingesting rasters from a directory, ensure that the ``--format`` argument matches the file extension of
-    the files. Otherwise, no files will be ingested.
-
-``delete-raster``
-^^^^^^^^^^^^^^^^^
-
-Delete ingested rasters.
-
-======================== =========================================================
-Argument                 Description
-======================== =========================================================
-``-t, --raster-table *`` Accumulo table for storing raster data
-``--force``              Delete without prompting for confirmation
 ======================== =========================================================

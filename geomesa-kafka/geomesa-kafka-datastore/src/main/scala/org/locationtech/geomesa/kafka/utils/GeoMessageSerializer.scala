@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -7,8 +7,6 @@
  ***********************************************************************/
 
 package org.locationtech.geomesa.kafka.utils
-
-import java.nio.charset.StandardCharsets
 
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.clients.producer.Partitioner
@@ -21,6 +19,7 @@ import org.locationtech.geomesa.kafka.utils.GeoMessage.{Change, Clear, Delete}
 import org.locationtech.geomesa.utils.index.ByteArrays
 import org.opengis.feature.simple.SimpleFeatureType
 
+import java.nio.charset.StandardCharsets
 import scala.util.Random
 import scala.util.control.NonFatal
 import scala.util.hashing.MurmurHash3
@@ -95,6 +94,18 @@ object GeoMessageSerializer {
     new GeoMessageSerializer(sft, serializer, kryoSerializer, avroSerializer, version)
   }
 
+  def partition(numPartitions: Int, toKey: => Array[Byte]): Int = {
+    // use the feature id if available, otherwise (for clear) use random shard
+    if (numPartitions < 2) { 0 } else {
+      val key = toKey
+      if (key != null && key.length > 0) {
+        Math.abs(MurmurHash3.bytesHash(key, MurmurHash3.arraySeed)) % numPartitions
+      } else {
+        Random.nextInt(numPartitions)
+      }
+    }
+  }
+
   /**
     * Ensures that updates to a given feature go to the same partition, so that they maintain order
     */
@@ -107,15 +118,7 @@ object GeoMessageSerializer {
                            valueBytes: Array[Byte],
                            cluster: Cluster): Int = {
       val count = cluster.partitionsForTopic(topic).size
-
-      try {
-        // use the feature id if available, otherwise (for clear) use random shard
-        if (keyBytes.length > 0) {
-          Math.abs(MurmurHash3.bytesHash(keyBytes)) % count
-        } else {
-          Random.nextInt(count)
-        }
-      } catch {
+      try { GeoMessageSerializer.partition(count, keyBytes) } catch {
         case NonFatal(e) =>
           throw new IllegalArgumentException(
             s"Unexpected message format: ${Option(keyBytes).map(ByteArrays.toHex).getOrElse("")} " +
@@ -243,8 +246,8 @@ class GeoMessageSerializer(sft: SimpleFeatureType,
     * @param deserializer deserializer appropriate for the message encoding
     * @return
     */
-  private def deserialize(key: Array[Byte], value: Array[Byte], deserializer: SimpleFeatureSerializer): GeoMessage = {
-    if (key.isEmpty) { Clear } else {
+  protected def deserialize(key: Array[Byte], value: Array[Byte], deserializer: SimpleFeatureSerializer): GeoMessage = {
+    if (key.isEmpty && (value == null || value.isEmpty)) { Clear } else {
       val id = new String(key, StandardCharsets.UTF_8)
       if (value == null) { Delete(id) } else { Change(deserializer.deserialize(id, value)) }
     }

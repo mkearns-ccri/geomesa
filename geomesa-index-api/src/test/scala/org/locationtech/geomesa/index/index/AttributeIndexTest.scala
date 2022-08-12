@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -27,6 +27,7 @@ import org.locationtech.geomesa.utils.index.ByteArrays
 import org.locationtech.geomesa.utils.io.WithClose
 import org.locationtech.geomesa.utils.stats.Cardinality
 import org.locationtech.geomesa.utils.text.WKTUtils
+import org.opengis.filter.Filter
 import org.specs2.mutable.Specification
 import org.specs2.runner.JUnitRunner
 
@@ -36,7 +37,9 @@ import scala.util.Random
 class AttributeIndexTest extends Specification with LazyLogging {
 
   val typeName = "attr-idx-test"
-  val spec = "name:String:index=true,age:Int:index=true,height:Float:index=true,dtg:Date,*geom:Point:srid=4326"
+  val spec =
+    "name:String,age:Int,height:Float,dtg:Date,*geom:Point:srid=4326;" +
+      "geomesa.indices.enabled='attr:name:geom:dtg,attr:age:geom:dtg,attr:height:geom:dtg'"
 
   val sft = SimpleFeatureTypes.createType(typeName, spec)
 
@@ -315,7 +318,7 @@ class AttributeIndexTest extends Specification with LazyLogging {
 
       ds.getSchema(typeName).getDescriptor("name").getCardinality mustEqual Cardinality.HIGH
 
-      val notNull = ECQL.toFilter("name IS NOT NULL")
+      val notNull = FastFilterFactory.toFilter(sft, "name IS NOT NULL")
       val notNullPlans = ds.getQueryPlan(new Query(typeName, notNull))
       notNullPlans must haveLength(1)
       notNullPlans.head.filter.index must beAnInstanceOf[AttributeIndex]
@@ -327,6 +330,50 @@ class AttributeIndexTest extends Specification with LazyLogging {
       agePlans.head.filter.index must beAnInstanceOf[AttributeIndex]
       agePlans.head.filter.primary must beSome(FastFilterFactory.toFilter(sft, "age = 21"))
       agePlans.head.filter.secondary must beSome(notNull)
+    }
+
+    "handle secondary date equality filters" in {
+      val spec = "name:String,age:Int,height:Float,dtg:Date,*geom:Point:srid=4326;" +
+          "geomesa.indices.enabled='attr:name:dtg'"
+      val sft = SimpleFeatureTypes.createType(typeName, spec)
+      val features = this.features.map(ScalaSimpleFeature.copy(sft, _))
+
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(sft)
+      WithClose(ds.getFeatureWriterAppend(typeName, Transaction.AUTO_COMMIT)) { writer =>
+        features.foreach(FeatureUtils.write(writer, _, useProvidedFid = true))
+      }
+
+      val filters = Seq(
+        "dtg = '2014-01-01T12:00:00.000Z'",
+        "dtg tequals 2014-01-01T12:00:00.000Z",
+        "dtg during 2014-01-01T11:59:59.999Z/2014-01-01T12:00:00.001Z",
+        "dtg between '2014-01-01T12:00:00.000Z' and '2014-01-01T12:00:00.000Z'",
+        "dtg >= '2014-01-01T12:00:00.000Z' and dtg < '2014-01-01T12:00:00.001Z'"
+      )
+      foreach(filters) { filter =>
+        val query = new Query(typeName, ECQL.toFilter(s"name = 'bob' and $filter"))
+        SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).toList mustEqual
+            features.slice(2, 3)
+      }
+    }
+
+    "handle filter.EXCLUDE with query hint" in {
+      val ds = new TestGeoMesaDataStore(true)
+      ds.createSchema(sft)
+
+      WithClose(ds.getFeatureWriterAppend(typeName, Transaction.AUTO_COMMIT)) { writer =>
+        features.foreach(FeatureUtils.write(writer, _, useProvidedFid = true))
+      }
+
+      val query = new Query(typeName, Filter.EXCLUDE)
+      query.getHints.put(QueryHints.QUERY_INDEX, "attr")
+
+      foreach(ds.getQueryPlan(query))(_.ranges must beEmpty)
+
+      val results = SelfClosingIterator(ds.getFeatureReader(query, Transaction.AUTO_COMMIT)).map(_.getID).toList
+
+      results must beEmpty
     }
   }
 }

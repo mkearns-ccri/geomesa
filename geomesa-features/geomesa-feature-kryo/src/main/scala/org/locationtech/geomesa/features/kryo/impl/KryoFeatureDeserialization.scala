@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -18,9 +18,16 @@ import org.locationtech.geomesa.features.SimpleFeatureSerializer
 import org.locationtech.geomesa.features.kryo.impl.KryoFeatureDeserialization.KryoAttributeReader
 import org.locationtech.geomesa.features.kryo.json.KryoJsonSerialization
 import org.locationtech.geomesa.features.kryo.serialization.KryoGeometrySerialization
+<<<<<<< HEAD
 import org.locationtech.geomesa.features.serialization.ObjectType
 import org.locationtech.geomesa.features.serialization.ObjectType.ObjectType
 import org.locationtech.geomesa.utils.cache.{CacheKeyGenerator, SoftThreadLocal, ThreadLocalCache}
+=======
+import org.locationtech.geomesa.utils.cache.{CacheKeyGenerator, SoftThreadLocal, ThreadLocalCache}
+import org.locationtech.geomesa.utils.geotools.ObjectType
+import org.locationtech.geomesa.utils.geotools.ObjectType.ObjectType
+import org.locationtech.geomesa.utils.kryo.NonMutatingInput
+>>>>>>> main
 import org.locationtech.jts.geom.Geometry
 import org.opengis.feature.`type`.AttributeDescriptor
 import org.opengis.feature.simple.SimpleFeatureType
@@ -47,18 +54,23 @@ trait KryoFeatureDeserialization extends SimpleFeatureSerializer with LazyLoggin
 
 object KryoFeatureDeserialization extends LazyLogging {
 
+<<<<<<< HEAD
   private val inputs  = new SoftThreadLocal[Input]()
   private val readers = new ThreadLocalCache[String, Array[KryoAttributeReader]](SerializerCacheExpiry)
+=======
+  private val inputBytes   = new SoftThreadLocal[Input]()
+  private val inputStreams = new SoftThreadLocal[Input]()
+  private val readers      = new ThreadLocalCache[String, Array[KryoAttributeReader]](SerializerCacheExpiry)
+>>>>>>> main
 
   def getInput(bytes: Array[Byte], offset: Int, count: Int): Input = {
-    val in = inputs.getOrElseUpdate(new Input)
+    val in = inputBytes.getOrElseUpdate(new NonMutatingInput())
     in.setBuffer(bytes, offset, count)
     in
   }
 
   def getInput(stream: InputStream): Input = {
-    val in = inputs.getOrElseUpdate(new Input)
-    in.setBuffer(Array.ofDim(1024))
+    val in = inputStreams.getOrElseUpdate(new NonMutatingInput(Array.ofDim(1024)))
     in.setInputStream(stream)
     in
   }

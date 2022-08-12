@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -15,13 +15,15 @@ import java.security.PrivilegedExceptionAction
 import com.github.benmanes.caffeine.cache.{CacheLoader, Caffeine, LoadingCache}
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.hadoop.conf.Configuration
-import org.apache.hadoop.hbase.client.{Connection, ConnectionFactory, HBaseAdmin}
+import org.apache.hadoop.hbase.client.{Connection, ConnectionFactory}
 import org.apache.hadoop.hbase.security.User
+import org.apache.hadoop.hbase.security.token.AuthenticationTokenIdentifier
 import org.apache.hadoop.hbase.{HBaseConfiguration, HConstants}
 import org.apache.hadoop.security.authentication.util.KerberosUtil
 import org.apache.hadoop.security.{SecurityUtil, UserGroupInformation}
 import org.locationtech.geomesa.hbase.data.HBaseDataStoreFactory.{HBaseGeoMesaKeyTab, HBaseGeoMesaPrincipal}
 import org.locationtech.geomesa.hbase.data.HBaseDataStoreParams.{ConfigPathsParam, ConfigsParam, ConnectionParam, ZookeeperParam}
+import org.locationtech.geomesa.hbase.utils.HBaseVersions
 import org.locationtech.geomesa.utils.io.{CloseWithLogging, HadoopUtils}
 
 import scala.util.{Failure, Success, Try}
@@ -99,6 +101,10 @@ object HBaseConnectionPool extends LazyLogging {
       ProvidedConnection(ConnectionParam.lookup(params))
     } else {
       val conf = getConfiguration(params)
+<<<<<<< HEAD
+=======
+      logger.debug(s"Connecting to HBase instance at ${conf.get(HConstants.ZOOKEEPER_QUORUM)}")
+>>>>>>> main
       if (HBaseDataStoreParams.CacheConnectionsParam.lookup(params)) {
         connections.get((conf, validate))
       } else {
@@ -129,7 +135,11 @@ object HBaseConnectionPool extends LazyLogging {
   private def doCreateConnection(conf: Configuration, validate: Boolean): ConnectionWrapper = {
     if (validate) {
       logger.debug("Checking configuration availability")
+<<<<<<< HEAD
       HBaseAdmin.checkHBaseAvailable(conf)
+=======
+      HBaseVersions.checkAvailable(conf)
+>>>>>>> main
     }
     val connection = ConnectionFactory.createConnection(conf)
     val kerberos = if (User.isHBaseSecurityEnabled(conf)) { Some(HadoopUtils.kerberosTicketRenewer()) } else { None }
@@ -145,6 +155,7 @@ object HBaseConnectionPool extends LazyLogging {
    * @param conf conf
    */
   def configureSecurity(conf: Configuration): Unit = synchronized {
+<<<<<<< HEAD
     if (User.isHBaseSecurityEnabled(conf)) {
       val principal = conf.get(HBaseGeoMesaPrincipal)
       val keytab = conf.get(HBaseGeoMesaKeyTab)
@@ -167,11 +178,51 @@ object HBaseConnectionPool extends LazyLogging {
         UserGroupInformation.loginUserFromKeytab(principal, keytab)
 
         logger.debug(s"Logged into Hadoop with user '${UserGroupInformation.getCurrentUser.getUserName}'")
+=======
+    import AuthenticationTokenIdentifier.AUTH_TOKEN_TYPE
+
+    if (User.isHBaseSecurityEnabled(conf)) {
+      val currentUser = UserGroupInformation.getCurrentUser
+      if (currentUser.getCredentials.getAllTokens.asScala.exists(_.getKind == AUTH_TOKEN_TYPE)) {
+        logger.debug("Using existing HBase authentication token")
+      } else {
+        val keytab = conf.get(HBaseGeoMesaKeyTab)
+        val rawPrincipal = conf.get(HBaseGeoMesaPrincipal)
+
+        if (keytab == null || rawPrincipal == null) {
+          lazy val missing =
+            Seq(HBaseGeoMesaKeyTab -> keytab, HBaseGeoMesaPrincipal -> rawPrincipal).collect { case (k, null) => k }
+          logger.warn(s"Security is enabled but missing credentials under '${missing.mkString("' and '")}'")
+        } else {
+          val principal = fullPrincipal(rawPrincipal)
+
+          lazy val principalMsg =
+            s"'$principal'${if (principal == rawPrincipal) { "" } else { s" (original '$rawPrincipal')"}}"
+          logger.debug(
+            s"Using Kerberos with principal $principalMsg, keytab '$keytab', " +
+                s"and Hadoop authentication method '${SecurityUtil.getAuthenticationMethod(conf)}'")
+
+          if (currentUser.hasKerberosCredentials && currentUser.getUserName == principal) {
+            logger.debug(s"User '$principal' is already authenticated")
+          } else {
+            if (currentUser.hasKerberosCredentials) {
+              logger.warn(
+                s"Changing global authenticated Hadoop user from '${currentUser.getUserName}' to '$principal' -" +
+                    "this will affect any connections still using the old user")
+            }
+            UserGroupInformation.setConfiguration(conf)
+            UserGroupInformation.loginUserFromKeytab(principal, keytab)
+
+            logger.debug(s"Logged into Hadoop with user '${UserGroupInformation.getCurrentUser.getUserName}'")
+          }
+        }
+>>>>>>> main
       }
     }
   }
 
   /**
+<<<<<<< HEAD
    * Compare two kerberos principals.
    *
    * The existing principal is expected to have a realm and hostname filled out already.
@@ -186,6 +237,17 @@ object HBaseConnectionPool extends LazyLogging {
    */
   private def sameName(current: UserGroupInformation, principal: String): Boolean = {
     val fullName = if (principal.indexOf('@') != -1) {
+=======
+   * Replace _HOST with the current host and add the default realm if nothing is specified.
+   *
+   * `SecurityUtil.getServerPrincipal` will replace the _HOST but only if there is already a realm.
+   *
+   * @param principal kerberos principal
+   * @return
+   */
+  private def fullPrincipal(principal: String): String = {
+    if (principal.indexOf('@') != -1) {
+>>>>>>> main
       // we have a realm so this should be work to replace _HOST if present
       SecurityUtil.getServerPrincipal(principal, null: String)
     } else {
@@ -200,7 +262,9 @@ object HBaseConnectionPool extends LazyLogging {
           }
       }
     }
+  }
 
+<<<<<<< HEAD
     current.getUserName == fullName
   }
 
@@ -233,6 +297,37 @@ object HBaseConnectionPool extends LazyLogging {
   }
 
   /**
+=======
+  /**
+   * Managed connection. The connection itself should not be closed - instead close the wrapper to handle
+   * lifecycle events appropriately.
+   */
+  sealed trait ConnectionWrapper extends Closeable {
+    val connection: Connection
+  }
+
+  /**
+   * An unshared connection
+   *
+   * @param connection connection
+   * @param kerberos kerberos ticket renewal thread
+   */
+  case class SingletonConnection(connection: Connection, kerberos: Option[Closeable]) extends ConnectionWrapper {
+    override def close(): Unit = CloseWithLogging(kerberos.toSeq ++ Seq(connection))
+  }
+
+  /**
+   * A shared, cached connection
+   *
+   * @param connection connection
+   * @param kerberos kerberos ticket renewal thread
+   */
+  case class CachedConnection(connection: Connection, kerberos: Option[Closeable]) extends ConnectionWrapper {
+    override def close(): Unit = {}
+  }
+
+  /**
+>>>>>>> main
    * Provided connection - no lifecycle management is performed
    *
    * @param connection connection

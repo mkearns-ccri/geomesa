@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -155,7 +155,7 @@ class CassandraDataStoreTest extends Specification {
         val filterLine = "Client-side filter: "
         val clientSideFilter = out.toString.split("\n").map(_.trim).find(_.startsWith(filterLine)).map(_.substring(filterLine.length))
         if (loose) {
-          clientSideFilter must beSome("None")
+          clientSideFilter must beSome("none")
         } else {
           clientSideFilter must beSome(org.locationtech.geomesa.filter.filterToString(filter))
         }

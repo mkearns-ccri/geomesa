@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -32,8 +32,11 @@ object KuduCreateSchemaCommand {
 
   @Parameters(commandDescription = "Create a GeoMesa feature type")
   class KuduCreateSchemaParams extends CreateSchemaParams with KuduParams {
-    @Parameter(names = Array("--compression"),
-      description = "Default compression for data files. One of 'lz4', 'snappy', 'zlib' or 'no_compression'", required = false, validateValueWith = classOf[CompressionTypeValidator])
+    @Parameter(
+      names = Array("--compression"),
+      description = "Default compression for data files. One of 'lz4', 'snappy', 'zlib' or 'no_compression'",
+      required = false,
+      validateValueWith = Array(classOf[CompressionTypeValidator]))
     var compression: String = KuduSystemProperties.Compression.default
   }
 

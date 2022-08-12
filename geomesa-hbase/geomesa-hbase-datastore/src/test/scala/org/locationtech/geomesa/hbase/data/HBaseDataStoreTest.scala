@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -12,12 +12,13 @@ import java.io.File
 import java.util.Collections
 
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.hadoop.hbase.TableName
+import org.apache.hadoop.hbase.{NamespaceDescriptor, TableName}
 import org.geotools.data._
 import org.geotools.data.collection.ListFeatureCollection
 import org.geotools.data.simple.SimpleFeatureStore
 import org.geotools.filter.text.ecql.ECQL
 import org.geotools.util.factory.Hints
+import org.junit.runner.RunWith
 import org.locationtech.geomesa.features.ScalaSimpleFeature
 import org.locationtech.geomesa.filter.function.ProxyIdFunction
 import org.locationtech.geomesa.hbase.data.HBaseDataStoreParams._
@@ -35,23 +36,24 @@ import org.locationtech.geomesa.utils.io.WithClose
 import org.opengis.feature.simple.SimpleFeature
 import org.opengis.filter.Filter
 import org.specs2.matcher.MatchResult
+import org.specs2.mutable.Specification
+import org.specs2.runner.JUnitRunner
 
 import scala.collection.JavaConversions._
 import scala.collection.JavaConverters._
 
-class HBaseDataStoreTest extends HBaseTest with LazyLogging {
+@RunWith(classOf[JUnitRunner])
+class HBaseDataStoreTest extends Specification with LazyLogging {
 
   sequential
-
-  step {
-    logger.info("Starting the HBase DataStore Test")
-  }
 
   "HBaseDataStore" should {
     "work with points" in {
       val typeName = "testpoints"
 
-      val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> catalogTableName)
+      val params = Map(
+        ConnectionParam.getName -> MiniCluster.connection,
+        HBaseCatalogParam.getName -> getClass.getSimpleName)
       val ds = DataStoreFinder.getDataStore(params).asInstanceOf[HBaseDataStore]
       ds must not(beNull)
 
@@ -193,7 +195,10 @@ class HBaseDataStoreTest extends HBaseTest with LazyLogging {
     "work with polys" in {
       val typeName = "testpolys"
 
-      val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> "HBaseDataStoreTest")
+      val params = Map(
+        ConnectionParam.getName -> MiniCluster.connection,
+        HBaseCatalogParam.getName -> getClass.getSimpleName
+      )
       val ds = DataStoreFinder.getDataStore(params).asInstanceOf[HBaseDataStore]
       ds must not(beNull)
 
@@ -242,7 +247,10 @@ class HBaseDataStoreTest extends HBaseTest with LazyLogging {
     "support updates" in {
       val typeName = "test-updates"
 
-      val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> catalogTableName)
+      val params = Map(
+        ConnectionParam.getName -> MiniCluster.connection,
+        HBaseCatalogParam.getName -> getClass.getSimpleName
+      )
       val ds = DataStoreFinder.getDataStore(params).asInstanceOf[HBaseDataStore]
       ds must not(beNull)
 
@@ -284,7 +292,10 @@ class HBaseDataStoreTest extends HBaseTest with LazyLogging {
     "support table splits" in {
       val typeName = "testsplits"
 
-      val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> catalogTableName)
+      val params = Map(
+        ConnectionParam.getName -> MiniCluster.connection,
+        HBaseCatalogParam.getName -> getClass.getSimpleName
+      )
       val ds = DataStoreFinder.getDataStore(params).asInstanceOf[HBaseDataStore]
       ds must not(beNull)
 
@@ -316,12 +327,49 @@ class HBaseDataStoreTest extends HBaseTest with LazyLogging {
       }
     }
 
+    "support table namespaces" in {
+      val typeName = "testnamespace"
+
+      val params = Map(
+        ConnectionParam.getName -> MiniCluster.connection,
+        HBaseCatalogParam.getName -> s"ns:${getClass.getSimpleName}"
+      )
+      val ds = DataStoreFinder.getDataStore(params).asInstanceOf[HBaseDataStore]
+      ds must not(beNull)
+
+      try {
+        ds.getSchema(typeName) must beNull
+
+        val sft = SimpleFeatureTypes.createType(typeName,
+          "name:String,age:Int,dtg:Date,*geom:Point:srid=4326;geomesa.indices.enabled=z3")
+        ds.createSchema(sft)
+
+        val features = Seq(
+          ScalaSimpleFeature.create(sft, "fid1", "will", 56, "2014-01-02", "POINT(45.0 49.0)"),
+          ScalaSimpleFeature.create(sft, "fid2", "george", 33, "2014-01-02", "POINT(45.0 49.0)"),
+          ScalaSimpleFeature.create(sft, "fid3", "sue", 99, "2014-01-02", "POINT(45.0 49.0)"),
+          ScalaSimpleFeature.create(sft, "fid4", "karen", 50, "2014-01-02", "POINT(45.0 49.0)"),
+          ScalaSimpleFeature.create(sft, "fid5", "bob", 56, "2014-01-02", "POINT(45.0 49.0)")
+        )
+        WithClose(ds.getFeatureWriterAppend(sft.getTypeName, Transaction.AUTO_COMMIT)) { writer =>
+          features.foreach(FeatureUtils.write(writer, _, useProvidedFid = true))
+        }
+        val query = SelfClosingIterator(ds.getFeatureReader(new Query(sft.getTypeName), Transaction.AUTO_COMMIT)).toList
+        query.sortBy(_.getID) mustEqual features
+      } finally {
+        ds.dispose()
+      }
+    }
+
     "support remote version" in {
       // note: we have to use a unique catalog to avoid getting a cached version
       // we can't use the thread local value b/c it's loaded in an asynchronous guava cache
       SchemaProperties.CheckDistributedVersion.set("true")
       try {
-        val params = Map(ConnectionParam.getName -> connection, HBaseCatalogParam.getName -> "HBaseDistributedVersionTest")
+        val params = Map(
+          ConnectionParam.getName -> MiniCluster.connection,
+          HBaseCatalogParam.getName -> "HBaseDistributedVersionTest"
+        )
         val ds = DataStoreFinder.getDataStore(params).asInstanceOf[HBaseDataStore]
         ds must not(beNull)
 
@@ -376,18 +424,11 @@ class HBaseDataStoreTest extends HBaseTest with LazyLogging {
       }
     }
 
-    if (count) {
+    if (!count) { ok } else {
       ds.getFeatureSource(query.getTypeName).getCount(query) mustEqual -1
       ds.getFeatureSource(query.getTypeName).getFeatures(query).size() mustEqual 0
       query.getHints.put(QueryHints.EXACT_COUNT, true)
       ds.getFeatureSource(query.getTypeName).getFeatures(query).size() mustEqual results.length
-    }
-
-    // verify ranges are grouped appropriately to not cross shard boundaries
-    forall(ds.getQueryPlan(query).flatMap(_.scans)) { scan =>
-      if (scan.getStartRow.isEmpty || scan.getStopRow.isEmpty) { ok } else {
-        scan.getStartRow()(0) mustEqual scan.getStopRow()(0)
-      }
     }
   }
 }

@@ -1,6 +1,10 @@
 Kudu Data Store
 ===============
 
+.. warning::
+
+   The GeoMesa Kudu Data Store is deprecated and will be removed in a future version.
+
 .. note::
 
     GeoMesa currently supports Kudu version |kudu_version|.
@@ -34,4 +38,3 @@ To get started with the Kudu Data Store, try the :doc:`/tutorials/geomesa-quicks
     spark
     configuration
     index_config
-    visibilities

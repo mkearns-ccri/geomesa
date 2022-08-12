@@ -1,5 +1,5 @@
 /***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
+ * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
  * All rights reserved. This program and the accompanying materials
  * are made available under the terms of the Apache License, Version 2.0
  * which accompanies this distribution and is available at
@@ -17,11 +17,16 @@ import com.typesafe.scalalogging.LazyLogging
 import org.locationtech.geomesa.features.SimpleFeatureSerializer
 import org.locationtech.geomesa.features.kryo.json.KryoJsonSerialization
 import org.locationtech.geomesa.features.kryo.serialization.{KryoGeometrySerialization, KryoUserDataSerialization}
+<<<<<<< HEAD
 import org.locationtech.geomesa.features.serialization.ObjectType
 import org.locationtech.geomesa.features.serialization.ObjectType.ObjectType
+=======
+>>>>>>> main
 import org.locationtech.geomesa.utils.cache.{CacheKeyGenerator, SoftThreadLocal, ThreadLocalCache}
 import org.locationtech.geomesa.utils.collection.IntBitSet
 import org.locationtech.geomesa.utils.geometry.GeometryPrecision
+import org.locationtech.geomesa.utils.geotools.ObjectType
+import org.locationtech.geomesa.utils.geotools.ObjectType.ObjectType
 import org.locationtech.jts.geom.Geometry
 import org.opengis.feature.`type`.AttributeDescriptor
 import org.opengis.feature.simple.{SimpleFeature, SimpleFeatureType}
@@ -34,6 +39,7 @@ trait KryoFeatureSerialization extends SimpleFeatureSerializer {
 
   private val withId = !options.withoutId
   private val withUserData = options.withUserData
+  private val withoutFidHints = options.withoutFidHints
 
   private val count = in.getAttributeCount
 
@@ -73,7 +79,7 @@ trait KryoFeatureSerialization extends SimpleFeatureSerializer {
     }
     offsets(i) = output.position() - offset // user data position
     if (withUserData) {
-      KryoUserDataSerialization.serialize(output, sf.getUserData)
+      KryoUserDataSerialization.serialize(output, sf.getUserData, withoutFidHints)
     }
     val end = output.position()
     if (end - offset > KryoFeatureSerialization.MaxUnsignedShort) {
