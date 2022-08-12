@@ -12,8 +12,6 @@ import org.locationtech.jts.geom._
 import org.locationtech.jts.geom.util.AffineTransformation
 import org.locationtech.jts.operation.distance.DistanceOp
 import org.apache.spark.sql.SQLContext
-import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.udf
 import org.locationtech.spatial4j.distance.{DistanceCalculator, DistanceUtils}
 import org.locationtech.spatial4j.context.jts.JtsSpatialContext
 import org.locationtech.geomesa.spark.jts.udaf.ConvexHull
