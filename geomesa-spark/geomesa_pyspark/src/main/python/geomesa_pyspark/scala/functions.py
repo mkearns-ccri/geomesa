@@ -1,7 +1,7 @@
 """
 Build PySpark UDFs from the Geomesa UDFs (scala UDFs).
 """
-from geomesa_pyspark.scala.utils import build_scala_udf, ColumnOrName
+from geomesa_pyspark.scala.udf import build_scala_udf, ColumnOrName
 from pyspark import SparkContext
 from pyspark.sql.column import Column
 

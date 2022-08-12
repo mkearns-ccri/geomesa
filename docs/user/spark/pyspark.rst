@@ -93,6 +93,46 @@ can be done manually by invoking ``geomesa_pyspark.init_sql()`` on the Spark ses
 
 You can terminate the Spark job on YARN using ``spark.stop()``.
 
+Using Geomesa UDFs in PySpark
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Accessing the Geomesa UDFs from the SQL API
+
+.. code-block:: python
+
+    df.createOrReplaceTempView("tbl")
+
+    spark.sql("""
+    select count(*) from tbl
+    where st_contains(st_makeBBOX(-72.0, 40.0, -71.0, 41.0), geom)
+    """).show()
+
+Accessing the Geomesa UDFs from the Fluent API via SQL Expressions
+
+.. code-block:: python
+
+    import pyspark.sql.functions as F
+
+    # add a new column
+    df = df.withColumn("geom_wkt", F.expr("st_asText(geom)"))
+
+    # filter using SQL where expression
+    df = df.select("*").where("st_area(geom) > 0.001")
+
+    df.show()
+
+Accessing the Geomesa UDFs from the Fluent API via Python Wrappers
+
+.. code-block:: python
+
+    from geomesa_pyspark.scala.functions import st_asText, st_area
+
+    df = df.withColumn("geom_wkt", st_asText("geom"))
+
+    df = df.withColumn("geom_area", st_area("geom"))
+
+    df.show()
+
 Jupyter
 ^^^^^^^
 
