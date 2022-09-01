@@ -6,7 +6,7 @@ from pyspark import SparkContext
 from pyspark.sql.column import Column
 
 spark_context = SparkContext.getOrCreate()
-geomesa_udfs = spark_context._jvm.org.locationtech.geomesa.spark.jts.udf.GeomesaPysparkFunctions
+geomesa_udfs = spark_context._jvm.org.locationtech.geomesa.spark.GeomesaPysparkFunctions
 
 # Geometric Accessor Functions
 
@@ -37,10 +37,6 @@ def st_geometryN(col1: ColumnOrName, col2: ColumnOrName) -> Column:
     """Returns the n-th Geometry (1-based index) of geom if the Geometry is a
     GeometryCollection, or geom if it is not."""
     return build_scala_udf(spark_context, geomesa_udfs.st_geometryN)(col1, col2)
-
-def st_geometryType(col: ColumnOrName) -> Column:
-    """Returns the type of this Geometry."""
-    return build_scala_udf(spark_context, geomesa_udfs.st_geometryType)(col)
 
 def st_interiorRingN(col1: ColumnOrName, col2: ColumnOrName) -> Column:
     """Returns the n-th interior LineString ring of the Polygon geom. Returns
@@ -132,6 +128,10 @@ def st_geomFromGeoHash(col1: ColumnOrName, col2: ColumnOrName) -> Column:
 def st_box2DFromGeoHash(col: ColumnOrName) -> Column:
     """Alias of st_geomFromGeoHash."""
     return build_scala_udf(spark_context, geomesa_udfs.st_box2DFromGeoHash)(col)
+
+def st_geomFromGeoJSON(col: ColumnOrName) -> Column:
+    """"""
+    return build_scala_udf(spark_context, geomesa_udfs.st_geomFromGeoJSON)(col)
 
 def st_geomFromText(col: ColumnOrName) -> Column:
     """Alias of st_geomFromWKT."""
@@ -257,6 +257,10 @@ def st_bufferPoint(col1: ColumnOrName, col2: ColumnOrName) -> Column:
     where radius is given in meters."""
     return build_scala_udf(spark_context, geomesa_udfs.st_bufferPoint)(col1, col2)
 
+def st_idlSafeGeom(col: ColumnOrName) -> Column:
+    """Alias of st_antimeridianSafeGeom."""
+    return build_scala_udf(spark_context, geomesa_udfs.st_antimeridianSafeGeom)(col)
+
 # Spatial Relation Functions
 
 def st_translate(col1: ColumnOrName, col2: ColumnOrName, col3: ColumnOrName) -> Column:
@@ -344,6 +348,11 @@ def st_distanceSphere(col1: ColumnOrName, col2: ColumnOrName) -> Column:
     geometries assuming a spherical earth."""
     return build_scala_udf(spark_context, geomesa_udfs.st_distanceSphere)(col1, col2)
 
+def st_distanceSpheroid(col1: ColumnOrName, col2: ColumnOrName) -> Column:
+    """Returns the minimum distance between two longitude/latitude geometries
+    assuming the WGS84 spheroid."""
+    return build_scala_udf(spark_context, geomesa_udfs.st_distanceSpheroid)(col1, col2)
+
 def st_length(col: ColumnOrName) -> Column:
     """Returns the 2D path length of linear geometries, or perimeter of areal
     geometries, in units of the the coordinate reference system (e.g. degrees
@@ -356,3 +365,22 @@ def st_lengthSphere(col: ColumnOrName) -> Column:
     approximation is within 0.3% of st_lengthSpheroid and is computationally
     more efficient."""
     return build_scala_udf(spark_context, geomesa_udfs.st_lengthSphere)(col)
+
+def st_lengthSpheroid(col: ColumnOrName) -> Column:
+    """Calculates the 2D path length of a LineString geometry defined with
+    longitude/latitude coordinates on the WGS84 spheroid. The returned length
+    is in units of meters."""
+    return build_scala_udf(spark_context, geomesa_udfs.st_lengthSpheroid)(col)
+
+def st_intersection(col1: ColumnOrName, col2: ColumnOrName) -> Column:
+    """Returns the intersection of the input geometries."""
+    return build_scala_udf(spark_context, geomesa_udfs.st_intersection)(col1, col2)
+
+def st_difference(col1: ColumnOrName, col2: ColumnOrName) -> Column:
+    """Returns the difference of the input geometries."""
+    return build_scala_udf(spark_context, geomesa_udfs.st_difference)(col1, col2)
+
+def st_transform(col1: ColumnOrName, col2: ColumnOrName, col3: ColumnOrName) -> Column:
+    """Returns a new geometry with its coordinates transformed to a different
+    coordinate reference system (for example from EPSG:4326 to EPSG:27700)."""
+    return build_scala_udf(spark_context, geomesa_udfs.st_transform)(col1, col2, col3)

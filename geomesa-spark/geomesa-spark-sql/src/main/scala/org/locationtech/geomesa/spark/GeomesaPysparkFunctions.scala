@@ -1,15 +1,8 @@
-/***********************************************************************
- * Copyright (c) 2013-2019 Commonwealth Computer Research, Inc.
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Apache License, Version 2.0
- * which accompanies this distribution and is available at
- * http://www.opensource.org/licenses/apache2.0.php.
- ***********************************************************************/
-
-package org.locationtech.geomesa.spark.jts.udf
+package org.locationtech.geomesa.spark
 
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
+import org.locationtech.geomesa.spark.GeometricDistanceFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricAccessorFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricCastFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricConstructorFunctions._
@@ -29,7 +22,6 @@ object GeomesaPysparkFunctions {
   def st_envelope: UserDefinedFunction = udf(ST_Envelope)
   def st_exteriorRing: UserDefinedFunction = udf(ST_ExteriorRing)
   def st_geometryN: UserDefinedFunction = udf(ST_GeometryN)
-  def st_geometryType: UserDefinedFunction = udf(ST_GeometryType)
   def st_interiorRingN: UserDefinedFunction = udf(ST_InteriorRingN)
   def st_isClosed: UserDefinedFunction = udf(ST_IsClosed)
   def st_isCollection: UserDefinedFunction = udf(ST_IsCollection)
@@ -53,6 +45,7 @@ object GeomesaPysparkFunctions {
   /* Geometric Constructor Functions */
   def st_geomFromGeoHash: UserDefinedFunction = udf(ST_GeomFromGeoHash)
   def st_box2DFromGeoHash: UserDefinedFunction = udf(ST_GeomFromGeoHash)
+  def st_geomFromGeoJSON: UserDefinedFunction = udf(ST_GeomFromGeoJSON)
   def st_geomFromText: UserDefinedFunction = udf(ST_GeomFromWKT)
   def st_geometryFromText: UserDefinedFunction = udf(ST_GeomFromWKT)
   def st_geomFromWKT: UserDefinedFunction = udf(ST_GeomFromWKT)
@@ -84,6 +77,7 @@ object GeomesaPysparkFunctions {
   /* Geometric Processing Functions */
   def st_antimeridianSafeGeom: UserDefinedFunction = udf(ST_antimeridianSafeGeom)
   def st_bufferPoint: UserDefinedFunction = udf(ST_BufferPoint)
+  def st_idlSafeGeom: UserDefinedFunction = udf(ST_antimeridianSafeGeom)
 
   /* Spatial Relation Functions */
   def st_translate: UserDefinedFunction = udf(ST_Translate)
@@ -103,7 +97,11 @@ object GeomesaPysparkFunctions {
   def st_closestPoint: UserDefinedFunction = udf(ST_ClosestPoint)
   def st_distance: UserDefinedFunction = udf(ST_Distance)
   def st_distanceSphere: UserDefinedFunction = udf(ST_DistanceSphere)
+  def st_distanceSpheroid: UserDefinedFunction = udf(ST_DistanceSpheroid)
   def st_length: UserDefinedFunction = udf(ST_Length)
-  def st_aggregateDistanceSphere: UserDefinedFunction = udf(ST_AggregateDistanceSphere)
+  def st_lengthSpheroid: UserDefinedFunction = udf(ST_LengthSpheroid)
   def st_lengthSphere: UserDefinedFunction = udf(ST_LengthSphere)
+  def st_intersection: UserDefinedFunction = udf(ST_Intersection)
+  def st_difference: UserDefinedFunction = udf(ST_Difference)
+  def st_transform: UserDefinedFunction = udf(ST_Transform)
 }
