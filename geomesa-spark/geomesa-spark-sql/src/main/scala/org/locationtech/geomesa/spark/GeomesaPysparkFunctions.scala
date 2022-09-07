@@ -1,15 +1,8 @@
-/***********************************************************************
- * Copyright (c) 2013-2022 Commonwealth Computer Research, Inc.
- * All rights reserved. This program and the accompanying materials
- * are made available under the terms of the Apache License, Version 2.0
- * which accompanies this distribution and is available at
- * http://www.opensource.org/licenses/apache2.0.php.
- ***********************************************************************/
-
-package org.locationtech.geomesa.spark.jts.udf
+package org.locationtech.geomesa.spark
 
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.udf
+import org.locationtech.geomesa.spark.GeometricDistanceFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricAccessorFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricCastFunctions._
 import org.locationtech.geomesa.spark.jts.udf.GeometricConstructorFunctions._
@@ -170,17 +163,17 @@ object GeomesaPysparkFunctions {
 
   def st_distanceSphere: UserDefinedFunction = udf(ST_DistanceSphere)
 
-  //def st_distanceSpheroid: UserDefinedFunction = udf(ST_DistanceSpheroid)
+  def st_distanceSpheroid: UserDefinedFunction = udf(ST_DistanceSpheroid)
 
   def st_length: UserDefinedFunction = udf(ST_Length)
 
-  //def st_lengthSpheroid: UserDefinedFunction = udf(ST_LengthSpheroid)
-
   def st_lengthSphere: UserDefinedFunction = udf(ST_LengthSphere)
+
+  def st_lengthSpheroid: UserDefinedFunction = udf(ST_LengthSpheroid)
 
   def st_intersection: UserDefinedFunction = udf(ST_Intersection)
 
   def st_difference: UserDefinedFunction = udf(ST_Difference)
 
-  //def st_transform: UserDefinedFunction = udf(ST_Transform)
+  def st_transform: UserDefinedFunction = udf(ST_Transform)
 }
