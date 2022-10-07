@@ -56,7 +56,9 @@ class DensityProcess extends GeoMesaProcess {
       argOutputWidth: Integer,
       @DescribeParameter(name = "outputHeight", description = "Height of output raster in pixels")
       argOutputHeight: Integer,
-      monitor: ProgressListener): GridCoverage2D = {
+      monitor: ProgressListener,
+      @DescribeParameter(name = "normalize", description = "normalize = False will return raw counts")
+      normalize: Boolean = true): GridCoverage2D = {
 
     val pixels = Option(argRadiusPixels).map(_.intValue).getOrElse(DefaultRadiusPixels)
 
@@ -70,7 +72,7 @@ class DensityProcess extends GeoMesaProcess {
 
     val decode = DensityScan.decodeResult(envelope, outputWidth, outputHeight)
 
-    val heatMap = new HeatmapSurface(pixels, envelope, outputWidth, outputHeight)
+    val heatMap = new HeatmapSurface(pixels, envelope, outputWidth, outputHeight, normalize)
 
     try {
       WithClose(obsFeatures.features()) { features =>
@@ -86,7 +88,7 @@ class DensityProcess extends GeoMesaProcess {
       case e: Exception => throw new ProcessException("Error processing heatmap", e)
     }
 
-    val heatMapGrid = DensityProcess.flipXY(heatMap.computeSurface)
+    val heatMapGrid = DensityProcess.flipXY(heatMap.computeSurface())
 
     // create the raster from our unbuffered envelope and discard the buffered pixels in our final image
     val raster = RasterFactory.createBandedRaster(DataBuffer.TYPE_FLOAT, argOutputWidth, argOutputHeight, 1, null)

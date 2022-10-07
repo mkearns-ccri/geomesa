@@ -11,8 +11,8 @@ package org.locationtech.geomesa.index.view
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream}
 import java.nio.file.{Files, Path}
 import java.util.Date
-
 import com.typesafe.config.{Config, ConfigFactory, ConfigRenderOptions, ConfigValueFactory}
+import org.geotools.coverage.grid.GridCoverage2D
 import org.geotools.data.{DataStoreFinder, Query, Transaction}
 import org.geotools.feature.NameImpl
 import org.geotools.filter.text.ecql.ECQL
@@ -323,12 +323,49 @@ class MergedDataStoreViewTest extends TestWithFeatureType {
       counts must containTheSameElementsAs(expected)
     }
 
-    "query multiple data stores through density process" in {
+//    "query multiple data stores through density process" in {
+//      val process = new DensityProcess()
+//      val radiusPixels = 10
+//      val envelope = new ReferencedEnvelope(44, 46, 52, 59, CRS_EPSG_4326)
+//      val width = 480
+//      val height = 360
+//
+//      val query = process.invertQuery(
+//        radiusPixels,
+//        null,
+//        null,
+//        envelope,
+//        width,
+//        height,
+//        new Query(sftName, defaultFilter),
+//        null
+//      )
+//
+//      val coverage = process.execute(
+//        mergedDs.getFeatureSource(sftName).getFeatures(query),
+//        radiusPixels,
+//        null,
+//        null,
+//        envelope,
+//        width,
+//        height,
+//        null
+//      )
+//
+//      // TODO way to test coverage?
+//      coverage must not(beNull)
+//
+//      coverage.dispose(false)
+//      ok
+//    }
+
+    "examine output of density process" in {
+
       val process = new DensityProcess()
-      val radiusPixels = 10
+      val radiusPixels = 0
       val envelope = new ReferencedEnvelope(44, 46, 52, 59, CRS_EPSG_4326)
-      val width = 480
-      val height = 360
+      val width = 10
+      val height = 10
 
       val query = process.invertQuery(
         radiusPixels,
@@ -341,7 +378,7 @@ class MergedDataStoreViewTest extends TestWithFeatureType {
         null
       )
 
-      val coverage = process.execute(
+      val coverage: GridCoverage2D = process.execute(
         mergedDs.getFeatureSource(sftName).getFeatures(query),
         radiusPixels,
         null,
@@ -349,14 +386,12 @@ class MergedDataStoreViewTest extends TestWithFeatureType {
         envelope,
         width,
         height,
-        null
+        null,
+        false
       )
 
-      // TODO way to test coverage?
       coverage must not(beNull)
 
-      coverage.dispose(false)
-      ok
     }
   }
 
