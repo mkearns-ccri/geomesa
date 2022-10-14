@@ -56,9 +56,9 @@ class DensityProcess extends GeoMesaProcess {
       argOutputWidth: Integer,
       @DescribeParameter(name = "outputHeight", description = "Height of output raster in pixels")
       argOutputHeight: Integer,
-      monitor: ProgressListener,
-      @DescribeParameter(name = "normalize", description = "normalize = False will return raw counts")
-      normalize: Boolean = true): GridCoverage2D = {
+      @DescribeParameter(name = "normalize", description = "normalize = False will return raw counts", defaultValue = "true")
+      normalize: Boolean = true,
+      monitor: ProgressListener): GridCoverage2D = {
 
     val pixels = Option(argRadiusPixels).map(_.intValue).getOrElse(DefaultRadiusPixels)
 

@@ -68,7 +68,7 @@ class HeatmapSurface(kernelRadius: Int,
     val baseBoxKernelRadius = kernelRadius / GAUSSIAN_APPROX_ITER
     val radiusIncBreak = kernelRadius - baseBoxKernelRadius * GAUSSIAN_APPROX_ITER
 
-    val grid2 = Array.ofDim[Float](xSize, ySize)
+    val grid2 = Array.ofDim[Float](ySize, xSize)
     for (count <- Seq.range(0, GAUSSIAN_APPROX_ITER)) {
       var boxKernelRadius = baseBoxKernelRadius
       if (count < radiusIncBreak) boxKernelRadius += 1

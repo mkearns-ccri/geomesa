@@ -386,8 +386,8 @@ class MergedDataStoreViewTest extends TestWithFeatureType {
         envelope,
         width,
         height,
-        null,
-        false
+        false,
+        null
       )
 
       coverage must not(beNull)
