@@ -323,49 +323,12 @@ class MergedDataStoreViewTest extends TestWithFeatureType {
       counts must containTheSameElementsAs(expected)
     }
 
-//    "query multiple data stores through density process" in {
-//      val process = new DensityProcess()
-//      val radiusPixels = 10
-//      val envelope = new ReferencedEnvelope(44, 46, 52, 59, CRS_EPSG_4326)
-//      val width = 480
-//      val height = 360
-//
-//      val query = process.invertQuery(
-//        radiusPixels,
-//        null,
-//        null,
-//        envelope,
-//        width,
-//        height,
-//        new Query(sftName, defaultFilter),
-//        null
-//      )
-//
-//      val coverage = process.execute(
-//        mergedDs.getFeatureSource(sftName).getFeatures(query),
-//        radiusPixels,
-//        null,
-//        null,
-//        envelope,
-//        width,
-//        height,
-//        null
-//      )
-//
-//      // TODO way to test coverage?
-//      coverage must not(beNull)
-//
-//      coverage.dispose(false)
-//      ok
-//    }
-
-    "examine output of density process" in {
-
+    "query multiple data stores through density process" in {
       val process = new DensityProcess()
-      val radiusPixels = 0
+      val radiusPixels = 10
       val envelope = new ReferencedEnvelope(44, 46, 52, 59, CRS_EPSG_4326)
-      val width = 10
-      val height = 10
+      val width = 480
+      val height = 360
 
       val query = process.invertQuery(
         radiusPixels,
@@ -378,7 +341,7 @@ class MergedDataStoreViewTest extends TestWithFeatureType {
         null
       )
 
-      val coverage: GridCoverage2D = process.execute(
+      val coverage = process.execute(
         mergedDs.getFeatureSource(sftName).getFeatures(query),
         radiusPixels,
         null,
@@ -386,12 +349,21 @@ class MergedDataStoreViewTest extends TestWithFeatureType {
         envelope,
         width,
         height,
-        false,
+        true,
         null
       )
 
+      /*
+        TODO way to test coverage?
+        The density process returns a GridCoverage2D, which is difficult to examine.
+        You can set up some break points and run the debugger to examine the program
+        state just prior to returning to make sure the density values are correct based
+        on whether you have set normalize = true/false.
+       */
       coverage must not(beNull)
 
+      coverage.dispose(false)
+      ok
     }
   }
 
